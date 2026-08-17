@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Agent settings
+.agents
+.ai
+
+# Media / Secrets
+models/
+
+# FFmpeg/FFprobe sidecar binaries (too large for git, see src-tauri/binaries/README.md)
+src-tauri/ffmpeg-*.exe
+src-tauri/ffprobe-*.exe
