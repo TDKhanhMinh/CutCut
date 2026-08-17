@@ -25,6 +25,9 @@ pub fn run() {
             commands::media::spawn_test_ffmpeg_job,
             commands::media::read_media_metadata,
             commands::media::export_prototype_video,
+            commands::project::create_project,
+            commands::project::save_project_to_disk,
+            commands::project::load_project_from_disk,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

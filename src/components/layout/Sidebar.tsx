@@ -1,10 +1,58 @@
-import { Clapperboard, Home, Settings, Layers } from "lucide-react";
+import { Clapperboard, Home, Settings, Layers, FilePlus, FolderOpen, Save } from "lucide-react";
 import { useAppStore } from "../../store";
+import { useProjectStore } from "../../stores/useProjectStore";
 import { useNavigate, useLocation } from "react-router-dom";
+import { invoke } from "@tauri-apps/api/core";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import { Project } from "../../types/project";
+import { useEffect } from "react";
 
 export function Sidebar() {
   const sidebarOpen = useAppStore((state) => state.sidebarOpen);
   const location = useLocation();
+  const { activeProject, saveState, isDirty, setProject, saveProject } = useProjectStore();
+
+  // Autosave logic (debounce 3s)
+  useEffect(() => {
+    if (!isDirty || !activeProject) return;
+    const timer = setTimeout(() => {
+      saveProject();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [isDirty, activeProject, saveProject]);
+
+  const handleNewProject = async () => {
+    try {
+      const p = await invoke<Project>('create_project');
+      const path = await save({
+        filters: [{ name: 'CutCut Project', extensions: ['cutcut'] }],
+        defaultPath: 'Untitled.cutcut'
+      });
+      if (path) {
+        setProject(p, path);
+        // Force an initial save
+        useProjectStore.setState({ isDirty: true });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleOpenProject = async () => {
+    try {
+      const selected = await open({
+        filters: [{ name: 'CutCut Project', extensions: ['cutcut'] }],
+        multiple: false
+      });
+      if (selected) {
+        const path = Array.isArray(selected) ? selected[0] : selected;
+        const res = await invoke<{project: Project, path: string}>('load_project_from_disk', { path });
+        setProject(res.project, res.path);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
     <aside
@@ -27,8 +75,46 @@ export function Sidebar() {
           path="/editor"
           active={location.pathname === "/editor"}
         />
+
+        <div className="my-2 border-t border-border"></div>
+        
+        <button
+          onClick={handleNewProject}
+          className="flex w-full items-center justify-center gap-3 rounded-md p-3 transition-colors hover:bg-muted lg:justify-start lg:px-4 text-muted-foreground"
+        >
+          <FilePlus className="h-5 w-5" />
+          <span className="hidden text-sm font-medium lg:inline-block">New Project</span>
+        </button>
+
+        <button
+          onClick={handleOpenProject}
+          className="flex w-full items-center justify-center gap-3 rounded-md p-3 transition-colors hover:bg-muted lg:justify-start lg:px-4 text-muted-foreground"
+        >
+          <FolderOpen className="h-5 w-5" />
+          <span className="hidden text-sm font-medium lg:inline-block">Open Project</span>
+        </button>
+        
+        {activeProject && (
+          <button
+            onClick={() => saveProject()}
+            className="flex w-full items-center justify-center gap-3 rounded-md p-3 transition-colors hover:bg-muted lg:justify-start lg:px-4 text-muted-foreground"
+          >
+            <Save className="h-5 w-5" />
+            <span className="hidden text-sm font-medium lg:inline-block">Save</span>
+          </button>
+        )}
       </nav>
-      <div className="w-full p-2 lg:p-4">
+
+      {activeProject && (
+          <div className="w-full p-2 lg:p-4 text-xs font-medium text-center lg:text-left text-muted-foreground">
+              {saveState === 'saving' && <span className="text-yellow-500">Saving...</span>}
+              {saveState === 'saved' && <span className="text-green-500">All changes saved</span>}
+              {saveState === 'error' && <span className="text-red-500">Save failed!</span>}
+              {saveState === 'idle' && isDirty && <span className="text-yellow-500">Unsaved changes</span>}
+          </div>
+      )}
+
+      <div className="w-full p-2 lg:p-4 border-t border-border">
         <NavItem
           icon={<Settings className="h-5 w-5" />}
           label="Settings"
