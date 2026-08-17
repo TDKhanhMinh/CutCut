@@ -69,3 +69,43 @@ pub async fn read_media_metadata(
 ) -> Result<crate::models::media_info::MediaSourceMetadata, MediaEngineError> {
     crate::engines::ffmpeg::read_media_metadata(&app, path).await
 }
+
+/// Tauri command: Export a prototype MP4 video using FFmpeg.
+#[tauri::command]
+pub async fn export_prototype_video(
+    app: AppHandle,
+    input_path: String,
+    output_path: String,
+    total_duration_sec: f64,
+) -> Result<String, String> {
+    let job_id = uuid::Uuid::new_v4().to_string();
+    
+    // Scale to max 720p height, preserving aspect ratio. 
+    // -2 means calculate width automatically to maintain aspect ratio and ensure it's divisible by 2.
+    let args = vec![
+        "-y".to_string(), // overwrite
+        "-i".to_string(),
+        input_path,
+        "-vf".to_string(),
+        "scale=-2:720".to_string(),
+        "-c:v".to_string(),
+        "libx264".to_string(),
+        "-preset".to_string(),
+        "fast".to_string(),
+        "-crf".to_string(),
+        "23".to_string(),
+        "-c:a".to_string(),
+        "aac".to_string(),
+        "-progress".to_string(),
+        "pipe:1".to_string(),
+        output_path,
+    ];
+
+    let total_duration_us = (total_duration_sec * 1_000_000.0) as u64;
+
+    crate::services::media_job::spawn_ffmpeg_job(app, job_id.clone(), args, Some(total_duration_us))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(job_id)
+}

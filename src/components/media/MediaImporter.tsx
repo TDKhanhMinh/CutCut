@@ -13,7 +13,7 @@ export interface MediaSourceMetadata {
     rotation: number;
 }
 
-export function MediaImporter() {
+export function MediaImporter({ onMetadataParsed }: { onMetadataParsed: (meta: MediaSourceMetadata) => void }) {
     const [metadata, setMetadata] = useState<MediaSourceMetadata | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -41,6 +41,7 @@ export function MediaImporter() {
             // Path inside selected is absolute, we pass it to backend
             const result = await invoke<MediaSourceMetadata>('read_media_metadata', { path: filePath });
             setMetadata(result);
+            onMetadataParsed(result);
         } catch (e: any) {
             console.error('Failed to read metadata:', e);
             setError(e.toString());

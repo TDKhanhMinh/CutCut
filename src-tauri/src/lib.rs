@@ -24,6 +24,7 @@ pub fn run() {
             commands::media::cancel_media_job,
             commands::media::spawn_test_ffmpeg_job,
             commands::media::read_media_metadata,
+            commands::media::export_prototype_video,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
