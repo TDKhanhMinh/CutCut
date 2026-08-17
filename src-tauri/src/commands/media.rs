@@ -1,4 +1,4 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::engines::ffmpeg::{self, MediaBinaryInfo, MediaEngineError};
 
@@ -59,4 +59,13 @@ pub async fn spawn_test_ffmpeg_job(app: AppHandle) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     Ok(job_id)
+}
+
+/// Tauri command: Use FFprobe to read metadata of a local video file.
+#[tauri::command]
+pub async fn read_media_metadata(
+    app: AppHandle,
+    path: String,
+) -> Result<crate::models::media_info::MediaSourceMetadata, MediaEngineError> {
+    crate::engines::ffmpeg::read_media_metadata(&app, path).await
 }

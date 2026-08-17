@@ -181,6 +181,7 @@ pub async fn spawn_ffmpeg_job(
         }
     });
 
+    Ok(())
 }
 
 #[cfg(test)]

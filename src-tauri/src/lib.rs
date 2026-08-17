@@ -13,6 +13,7 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .manage(services::media_job::JobManager::default())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
@@ -22,6 +23,7 @@ pub fn run() {
             commands::media::get_ffprobe_version,
             commands::media::cancel_media_job,
             commands::media::spawn_test_ffmpeg_job,
+            commands::media::read_media_metadata,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

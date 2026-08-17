@@ -149,3 +149,92 @@ async fn run_sidecar_command(
 
     String::from_utf8(output.stdout).map_err(|_| MediaEngineError::InvalidUtf8)
 }
+
+/// Helper function to parse frame rate from FFprobe string like "30000/1001" or "30"
+fn parse_frame_rate(fps_str: &str) -> f64 {
+    let parts: Vec<&str> = fps_str.split('/').collect();
+    if parts.len() == 2 {
+        let num: f64 = parts[0].parse().unwrap_or(0.0);
+        let den: f64 = parts[1].parse().unwrap_or(1.0);
+        if den > 0.0 {
+            return num / den;
+        }
+    } else if let Ok(fps) = fps_str.parse::<f64>() {
+        return fps;
+    }
+    0.0
+}
+
+/// Use FFprobe to read metadata and parse into MediaSourceMetadata
+pub async fn read_media_metadata(
+    app: &AppHandle,
+    path: String,
+) -> Result<crate::models::media_info::MediaSourceMetadata, MediaEngineError> {
+    let args = vec![
+        "-v".to_string(), "quiet".to_string(),
+        "-print_format".to_string(), "json".to_string(),
+        "-show_format".to_string(),
+        "-show_streams".to_string(),
+        path.clone(),
+    ];
+
+    let output = run_ffprobe(app, args).await?;
+    let json: serde_json::Value = serde_json::from_str(&output)
+        .map_err(|e| MediaEngineError::SpawnFailed { message: format!("Failed to parse ffprobe JSON: {}", e) })?;
+
+    let format = json.get("format").ok_or_else(|| MediaEngineError::SpawnFailed { message: "No format section in ffprobe output".into() })?;
+    
+    // Parse duration from format
+    let duration_sec: f64 = format
+        .get("duration")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+
+    let streams = json.get("streams").and_then(|v| v.as_array()).ok_or_else(|| MediaEngineError::SpawnFailed { message: "No streams in ffprobe output".into() })?;
+
+    // Find video stream
+    let video_stream = streams.iter().find(|s| s.get("codec_type").and_then(|v| v.as_str()) == Some("video"));
+    
+    // Find audio stream
+    let audio_stream = streams.iter().find(|s| s.get("codec_type").and_then(|v| v.as_str()) == Some("audio"));
+
+    let audio_codec = audio_stream
+        .and_then(|s| s.get("codec_name"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let mut width = 0;
+    let mut height = 0;
+    let mut fps = 0.0;
+    let mut video_codec = String::new();
+    let mut rotation = 0;
+
+    if let Some(v) = video_stream {
+        width = v.get("width").and_then(|w| w.as_u64()).unwrap_or(0) as u32;
+        height = v.get("height").and_then(|h| h.as_u64()).unwrap_or(0) as u32;
+        video_codec = v.get("codec_name").and_then(|c| c.as_str()).unwrap_or("unknown").to_string();
+        
+        if let Some(r_frame_rate) = v.get("r_frame_rate").and_then(|f| f.as_str()) {
+            fps = parse_frame_rate(r_frame_rate);
+        }
+
+        // Try to parse rotation from tags
+        if let Some(tags) = v.get("tags") {
+            if let Some(rot) = tags.get("rotate").and_then(|r| r.as_str()) {
+                rotation = rot.parse().unwrap_or(0);
+            }
+        }
+    }
+
+    Ok(crate::models::media_info::MediaSourceMetadata {
+        path,
+        duration_sec,
+        fps,
+        width,
+        height,
+        video_codec,
+        audio_codec,
+        rotation,
+    })
+}
