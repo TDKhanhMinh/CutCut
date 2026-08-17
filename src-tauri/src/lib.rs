@@ -12,6 +12,7 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(services::media_job::JobManager::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
@@ -19,6 +20,8 @@ pub fn run() {
             commands::media::check_media_engines,
             commands::media::get_ffmpeg_version,
             commands::media::get_ffprobe_version,
+            commands::media::cancel_media_job,
+            commands::media::spawn_test_ffmpeg_job,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

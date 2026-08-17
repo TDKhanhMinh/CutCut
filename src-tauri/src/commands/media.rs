@@ -28,3 +28,35 @@ pub async fn get_ffprobe_version(
 ) -> Result<MediaBinaryInfo, MediaEngineError> {
     ffmpeg::get_ffprobe_version(&app).await
 }
+
+/// Tauri command: Cancel an ongoing media job.
+#[tauri::command]
+pub async fn cancel_media_job(app: AppHandle, job_id: String) -> Result<(), String> {
+    let job_manager = app.state::<crate::services::media_job::JobManager>();
+    job_manager.cancel_job(&job_id).await
+}
+
+/// Tauri command: Spawn a test FFmpeg job to verify progress events.
+/// This generates a 5-second test video.
+#[tauri::command]
+pub async fn spawn_test_ffmpeg_job(app: AppHandle) -> Result<String, String> {
+    let job_id = uuid::Uuid::new_v4().to_string();
+    
+    // Create a 5-second test video using lavfi
+    let args = vec![
+        "-y".to_string(),
+        "-f".to_string(), "lavfi".to_string(),
+        "-i".to_string(), "testsrc=duration=5:size=1280x720:rate=30".to_string(),
+        // We will output to null to just test the process and progress
+        "-f".to_string(), "null".to_string(), "-".to_string(),
+    ];
+
+    // Total duration is 5 seconds = 5,000,000 microseconds
+    let total_duration_us = Some(5_000_000);
+
+    crate::services::media_job::spawn_ffmpeg_job(app, job_id.clone(), args, total_duration_us)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(job_id)
+}
