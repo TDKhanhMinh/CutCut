@@ -169,4 +169,22 @@ mod tests {
         assert_eq!(intervals[0].end_ms, 2250);
         assert_eq!(intervals[0].duration_ms, 1000);
     }
+
+    #[test]
+    fn test_parse_silence_tail_edge_case() {
+        let mut current_start = None;
+        let mut intervals = Vec::new();
+
+        let line1 = "[silencedetect @ 0x123] silence_start: 1.25";
+        parse_silence_line(line1, &mut current_start, &mut intervals);
+        assert_eq!(current_start, Some(1.25));
+
+        // Edge case: file ends abruptly without a silence_end.
+        // It shouldn't panic, and intervals remain empty.
+        let line2 = "some random ffmpeg log";
+        parse_silence_line(line2, &mut current_start, &mut intervals);
+        
+        assert_eq!(intervals.len(), 0);
+        assert_eq!(current_start, Some(1.25)); // Keeps holding the start until we get an end
+    }
 }

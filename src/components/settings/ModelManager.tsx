@@ -52,12 +52,12 @@ export function ModelManager() {
     }
   };
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (isOpen) {
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (open) {
       void fetchModels();
     }
-  }, [isOpen]);
+  };
 
   useEffect(() => {
     const unlistenProgress = listen("resource-download-progress", (event: { payload: { id: string; progress: number; downloaded: number; total: number } }) => {
@@ -95,6 +95,9 @@ export function ModelManager() {
       await fetchModels();
     } catch (e) {
       console.error(e);
+      if (typeof e === "string" && e.includes("Checksum mismatch")) {
+        alert("Checksum mismatch! The downloaded file might be corrupted. Please try again.");
+      }
       await fetchModels();
     }
   };
@@ -125,7 +128,7 @@ export function ModelManager() {
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger 
         render={
           <Button variant="outline" size="sm" className="gap-2" />
