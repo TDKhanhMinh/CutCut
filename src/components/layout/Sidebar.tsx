@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { Project } from "../../types/project";
 import { useEffect } from "react";
+import { Button } from "../ui/button";
 
 export function Sidebar() {
   const sidebarOpen = useAppStore((state) => state.sidebarOpen);
@@ -78,30 +79,33 @@ export function Sidebar() {
 
         <div className="my-2 border-t border-border"></div>
         
-        <button
+        <Button
+          variant="ghost"
           onClick={handleNewProject}
-          className="flex w-full items-center justify-center gap-3 rounded-md p-3 transition-colors hover:bg-muted lg:justify-start lg:px-4 text-muted-foreground"
+          className="flex w-full items-center justify-center gap-3 p-3 lg:justify-start lg:px-4 text-muted-foreground"
         >
           <FilePlus className="h-5 w-5" />
           <span className="hidden text-sm font-medium lg:inline-block">New Project</span>
-        </button>
+        </Button>
 
-        <button
+        <Button
+          variant="ghost"
           onClick={handleOpenProject}
-          className="flex w-full items-center justify-center gap-3 rounded-md p-3 transition-colors hover:bg-muted lg:justify-start lg:px-4 text-muted-foreground"
+          className="flex w-full items-center justify-center gap-3 p-3 lg:justify-start lg:px-4 text-muted-foreground"
         >
           <FolderOpen className="h-5 w-5" />
           <span className="hidden text-sm font-medium lg:inline-block">Open Project</span>
-        </button>
+        </Button>
         
         {activeProject && (
-          <button
+          <Button
+            variant="ghost"
             onClick={() => saveProject()}
-            className="flex w-full items-center justify-center gap-3 rounded-md p-3 transition-colors hover:bg-muted lg:justify-start lg:px-4 text-muted-foreground"
+            className="flex w-full items-center justify-center gap-3 p-3 lg:justify-start lg:px-4 text-muted-foreground"
           >
             <Save className="h-5 w-5" />
             <span className="hidden text-sm font-medium lg:inline-block">Save</span>
-          </button>
+          </Button>
         )}
       </nav>
 
@@ -146,12 +150,13 @@ function NavItem({
   };
 
   return (
-    <button
+    <Button
+      variant="ghost"
       onClick={handleClick}
-      className={`flex w-full items-center justify-center gap-3 rounded-md p-3 transition-colors hover:bg-muted lg:justify-start lg:px-4 ${active ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
+      className={`flex w-full items-center justify-center gap-3 p-3 lg:justify-start lg:px-4 ${active ? "bg-primary/10 text-primary hover:bg-primary/20" : "text-muted-foreground"}`}
     >
       {icon}
       <span className="hidden text-sm font-medium lg:inline-block">{label}</span>
-    </button>
+    </Button>
   );
 }
