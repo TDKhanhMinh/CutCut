@@ -44,6 +44,16 @@ impl ResourceManager {
                 url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin".to_string(),
                 checksum: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b".to_string(),
                 compatibility: None,
+            },
+            ResourceItem {
+                id: "silero-vad-v5".to_string(),
+                resource_type: ResourceType::VadModel,
+                name: "Silero VAD v5.1.2".to_string(),
+                version: "v5.1.2".to_string(),
+                size_bytes: 885098,
+                url: "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin".to_string(),
+                checksum: "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf".to_string(),
+                compatibility: None,
             }
         ]
     }
