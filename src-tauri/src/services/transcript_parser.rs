@@ -1,6 +1,6 @@
 use crate::models::project::{Transcript, TranscriptSegment};
 use crate::models::whisper::WhisperResult;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct TranscriptParser;

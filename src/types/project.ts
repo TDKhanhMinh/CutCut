@@ -1,4 +1,5 @@
 import { MediaSourceMetadata } from "../components/media/MediaImporter";
+import { ArtifactRecord } from './artifact';
 
 export const CURRENT_SCHEMA_VERSION = 1;
 
@@ -12,6 +13,7 @@ export interface Project {
     edits: EditTimeline;
     captions: CaptionSettings | null;
     settings: OutputSettings;
+    artifacts: ArtifactRecord[];
 }
 
 export interface MediaSource {
