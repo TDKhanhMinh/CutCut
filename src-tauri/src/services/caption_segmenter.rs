@@ -116,10 +116,13 @@ pub fn generate_cues(transcript: &Transcript, existing_cues: &[CaptionCue]) -> V
 
     // Pass 3: Preserve manual modifications
     // If there is an existing cue with is_manual_modified = true, and its ID matches or 
-    // it perfectly overlaps, we can restore it. V1 policy: IDs are regenerated based on segment IDs + index,
-    // but a safer approach is to check if we can reuse the existing cues. 
-    // The requirement says: "cung cấp regenerate/confirm policy". For now, we return the newly generated track. 
-    // The frontend will be responsible for diffing and warning the user if manual edits are going to be overwritten.
+    // it perfectly overlaps, we restore it to prevent silent data loss.
+    for new_cue in generated_cues.iter_mut() {
+        if let Some(existing) = existing_cues.iter().find(|c| c.id == new_cue.id && c.is_manual_modified) {
+            new_cue.text = existing.text.clone();
+            new_cue.is_manual_modified = true;
+        }
+    }
     
     generated_cues
 }
@@ -269,5 +272,31 @@ mod tests {
         assert_eq!(cues.len(), 2);
         assert_eq!(cues[0].text, "Xin chào.");
         assert_eq!(cues[1].text, "Tôi là AI.");
+    }
+
+    #[test]
+    fn test_preserve_manual_edits() {
+        let transcript = Transcript {
+            id: "t1".into(),
+            source_id: "s1".into(),
+            model_id: "m1".into(),
+            language: "vi".into(),
+            generated_at: 0,
+            segments: vec![
+                segment("1", "Xin chào. Tôi là AI.", 0, 2000),
+            ],
+        };
+
+        let mut existing_cues = generate_cues(&transcript, &[]);
+        existing_cues[0].text = "Hello.".to_string();
+        existing_cues[0].is_manual_modified = true;
+        
+        let new_cues = generate_cues(&transcript, &existing_cues);
+        assert_eq!(new_cues.len(), 2);
+        assert_eq!(new_cues[0].text, "Hello.");
+        assert!(new_cues[0].is_manual_modified);
+        
+        assert_eq!(new_cues[1].text, "Tôi là AI.");
+        assert!(!new_cues[1].is_manual_modified);
     }
 }
