@@ -1,4 +1,3 @@
-use crate::engines::ffmpeg::MediaEngineError;
 use crate::models::media_job::{MediaJobEvent, MediaJobState};
 use crate::models::silence::{SilenceInterval, SilenceSettings};
 use crate::services::media_job::JobManager;

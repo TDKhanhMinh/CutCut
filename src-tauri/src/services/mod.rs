@@ -6,3 +6,7 @@ pub mod resource_manager;
 pub mod transcript_parser;
 pub mod whisper_service;
 pub mod silence_detector;
+pub mod artifact_registry;
+pub mod cache_cleanup;
+pub mod hardware_detection;
+pub mod runtime_preset;

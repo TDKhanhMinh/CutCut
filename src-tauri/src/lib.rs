@@ -38,6 +38,8 @@ pub fn run() {
             commands::resource::delete_model,
             commands::resource::get_active_model,
             commands::resource::set_active_model,
+            commands::diagnostics::get_runtime_profile,
+            commands::diagnostics::resolve_runtime_preset,
             services::silence_detector::start_silence_detection,
         ])
         .setup(|app| {

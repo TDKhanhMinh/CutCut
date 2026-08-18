@@ -1,5 +1,6 @@
 import { MediaSourceMetadata } from "../components/media/MediaImporter";
 import { SilenceConfig } from "./silence";
+import { ArtifactRecord } from './artifact';
 
 export const CURRENT_SCHEMA_VERSION = 1;
 
@@ -14,6 +15,7 @@ export interface Project {
     captions: CaptionSettings | null;
     settings: OutputSettings;
     silenceSettings: SilenceConfig;
+    artifacts: ArtifactRecord[];
 }
 
 export interface MediaSource {

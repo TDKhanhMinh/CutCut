@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::path::Path;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
 use std::fs;
 use crate::models::whisper::WhisperResult;
