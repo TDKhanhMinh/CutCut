@@ -21,6 +21,11 @@
           "name": "ffprobe",
           "sidecar": true,
           "args": true
+        },
+        {
+          "name": "whisper",
+          "sidecar": true,
+          "args": true
         }
       ]
     }

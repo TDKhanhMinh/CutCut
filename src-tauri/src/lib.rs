@@ -29,6 +29,7 @@ pub fn run() {
             commands::project::save_project_to_disk,
             commands::project::load_project_from_disk,
             commands::media::check_media_exists,
+            commands::whisper::transcribe_audio,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
