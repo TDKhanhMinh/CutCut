@@ -5,3 +5,4 @@ pub mod project_repository;
 pub mod resource_manager;
 pub mod transcript_parser;
 pub mod whisper_service;
+pub mod silence_detector;

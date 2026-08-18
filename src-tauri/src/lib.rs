@@ -38,6 +38,7 @@ pub fn run() {
             commands::resource::delete_model,
             commands::resource::get_active_model,
             commands::resource::set_active_model,
+            services::silence_detector::start_silence_detection,
         ])
         .setup(|app| {
             let _ = crate::services::audio_extraction_service::AudioExtractionService::cleanup_stale_audio(app.handle());
