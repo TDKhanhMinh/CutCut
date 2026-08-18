@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { TranscriptPanel } from "../editor/transcript/TranscriptPanel";
+import { SilenceSettingsPanel } from "../settings/SilenceSettingsPanel";
 import { Transcript } from "@/types/transcript";
 import { useTranscriptSync } from "@/hooks/useTranscriptSync";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { SilenceInterval } from "@/types/silence";
+import { SilenceConfig } from "@/types/silence";
 
 const mockTranscript: Transcript = {
   id: "t1",
@@ -24,6 +23,11 @@ const mockTranscript: Transcript = {
 export function Workspace() {
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isSilenceSettingsOpen, setIsSilenceSettingsOpen] = useState(false);
+  const [silenceConfig, setSilenceConfig] = useState<SilenceConfig>({
+    preset: 'balanced',
+    settings: { thresholdDb: -35, minDurationMs: 750 }
+  });
 
   const activeSegmentId = useTranscriptSync(mockTranscript.segments, currentTime);
 
@@ -34,40 +38,6 @@ export function Workspace() {
     }, 100);
     return () => clearInterval(interval);
   }, [isPlaying]);
-
-  const handleDetectSilence = async () => {
-    try {
-      const jobId = `silence-${Date.now()}`;
-      
-      const unlisten = await listen("media-job", (event: { payload: { jobId: string; state: string; message?: string; error?: string } }) => {
-        const payload = event.payload;
-        if (payload.jobId !== jobId) return;
-        
-        if (payload.state === "Completed") {
-           const intervals: SilenceInterval[] = JSON.parse(payload.message || "[]");
-           console.log("Detected silence intervals:", intervals);
-           alert(`Found ${intervals.length} silence intervals! Check console.`);
-           unlisten();
-        } else if (payload.state === "Failed" || payload.state === "Cancelled") {
-           console.error("Silence detection failed/cancelled:", payload.error || payload.message);
-           alert("Silence detection failed: " + (payload.error || payload.message));
-           unlisten();
-        }
-      });
-
-      // Pass a dummy path; it will fail, but proves the IPC works.
-      await invoke("start_silence_detection", {
-        jobId,
-        path: "C:\\non_existent.mp4",
-        settings: {
-          thresholdDb: -35,
-          minDurationMs: 500,
-        }
-      });
-    } catch (e) {
-      console.error("IPC Error:", e);
-    }
-  };
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-background">
@@ -92,13 +62,21 @@ export function Workspace() {
             </button>
             <button
               className="px-4 py-2 bg-outline border border-border text-foreground rounded-md text-sm cursor-pointer hover:bg-muted"
-              onClick={handleDetectSilence}
+              onClick={() => setIsSilenceSettingsOpen(true)}
             >
-              Test Silence Detect
+              Cấu hình Khoảng lặng
             </button>
           </div>
         </div>
       </div>
+
+      <SilenceSettingsPanel
+        isOpen={isSilenceSettingsOpen}
+        onOpenChange={setIsSilenceSettingsOpen}
+        config={silenceConfig}
+        onChange={setSilenceConfig}
+        testVideoPath="C:\\non_existent.mp4" // Mock test path
+      />
 
       <div className="w-96 flex-shrink-0 border-l border-border h-full">
         <TranscriptPanel
