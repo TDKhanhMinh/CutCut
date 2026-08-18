@@ -72,7 +72,7 @@ pub async fn start_silence_detection(
     let (mut rx, child) = cmd.spawn().map_err(|e| format!("Spawn error: {}", e))?;
 
     let job_manager = app.state::<JobManager>();
-    job_manager.add_job(job_id.clone(), child).await;
+    job_manager.add_job(job_id.clone(), crate::services::media_job::JobChild::Tauri(child)).await;
 
     let _ = app.emit(
         "media-job",

@@ -8,18 +8,32 @@ use tokio::sync::Mutex;
 use crate::engines::ffmpeg::MediaEngineError;
 use crate::models::media_job::{MediaJobEvent, MediaJobState};
 
+pub enum JobChild {
+    Tauri(CommandChild),
+    Tokio(tokio::process::Child),
+}
+
+impl JobChild {
+    pub async fn kill(self) -> Result<(), String> {
+        match self {
+            JobChild::Tauri(c) => c.kill().map_err(|e| e.to_string()),
+            JobChild::Tokio(mut c) => c.kill().await.map_err(|e| e.to_string()),
+        }
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct JobManager {
-    jobs: Arc<Mutex<HashMap<String, CommandChild>>>,
+    jobs: Arc<Mutex<HashMap<String, JobChild>>>,
 }
 
 impl JobManager {
-    pub async fn add_job(&self, job_id: String, child: CommandChild) {
+    pub async fn add_job(&self, job_id: String, child: JobChild) {
         let mut jobs = self.jobs.lock().await;
         jobs.insert(job_id, child);
     }
 
-    pub async fn remove_job(&self, job_id: &str) -> Option<CommandChild> {
+    pub async fn remove_job(&self, job_id: &str) -> Option<JobChild> {
         let mut jobs = self.jobs.lock().await;
         jobs.remove(job_id)
     }
@@ -29,7 +43,7 @@ impl JobManager {
         if let Some(child) = jobs.remove(job_id) {
             // Note: killing a child process might leave temp files.
             // Further cleanup can be added here if needed.
-            child.kill().map_err(|e| e.to_string())?;
+            child.kill().await?;
             Ok(())
         } else {
             Err(format!("Job {} not found or already completed", job_id))
@@ -89,7 +103,7 @@ pub async fn spawn_ffmpeg_job(
 
     // Store the child in JobManager
     let job_manager = app.state::<JobManager>();
-    job_manager.add_job(job_id.clone(), child).await;
+    job_manager.add_job(job_id.clone(), JobChild::Tauri(child)).await;
 
     // Emit started event
     let _ = app.emit(

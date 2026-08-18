@@ -1,11 +1,12 @@
 use tauri::{command, AppHandle, Manager, Emitter};
-use tauri_plugin_shell::ShellExt;
-use tauri_plugin_shell::process::CommandEvent;
 use crate::models::vad::{VadConfig, VadAnalysisResult};
 use crate::services::vad_detector::VadDetectionService;
 use crate::services::audio_extraction_service::AudioExtractionService;
-use crate::services::media_job::JobManager;
+use crate::services::media_job::{JobManager, JobChild};
 use crate::models::media_job::{MediaJobEvent, MediaJobState};
+use tokio::process::Command;
+use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 #[command]
 pub async fn start_vad_analysis(
@@ -49,15 +50,18 @@ pub async fn start_vad_analysis(
         "-np".to_string(),
     ];
 
-    let cmd = app
-        .shell()
-        .command(bin_path.to_string_lossy().to_string())
-        .args(args);
+    let mut cmd = Command::new(bin_path);
+    cmd.args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
-    let (mut rx, child) = cmd.spawn().map_err(|e| format!("Spawn error: {}", e))?;
+    let mut child = cmd.spawn().map_err(|e| format!("Spawn error: {}", e))?;
+
+    let stdout = child.stdout.take().expect("Failed to open stdout");
+    let stderr = child.stderr.take().expect("Failed to open stderr");
 
     let job_manager = app.state::<JobManager>();
-    job_manager.add_job(job_id.clone(), child).await;
+    job_manager.add_job(job_id.clone(), JobChild::Tokio(child)).await;
 
     let _ = app.emit(
         "media-job",
@@ -78,70 +82,83 @@ pub async fn start_vad_analysis(
         let mut intervals = Vec::new();
         let mut full_output = String::new();
 
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(line_bytes) | CommandEvent::Stderr(line_bytes) => {
-                    let line = String::from_utf8_lossy(&line_bytes);
+        let mut stdout_reader = BufReader::new(stdout).lines();
+        let mut stderr_reader = BufReader::new(stderr).lines();
+
+        loop {
+            tokio::select! {
+                Ok(Some(line)) = stdout_reader.next_line() => {
                     full_output.push_str(&line);
                     full_output.push('\n');
                 }
-                CommandEvent::Terminated(payload) => {
-                    let job_manager = app_clone.state::<JobManager>();
-                    job_manager.remove_job(&job_id_clone).await;
-
-                    // Ensure cleanup happens regardless of success/failure
-                    let _ = AudioExtractionService::cleanup_stt_audio(&app_clone, audio_path_clone.clone());
-
-                    if payload.code == Some(0) {
-                        VadDetectionService::parse_vad_output(&full_output, &mut intervals);
-                        let non_speech = VadDetectionService::invert_speech_intervals(&intervals, duration_ms);
-
-                        let result = VadAnalysisResult {
-                            provider: "whisper.cpp/silero-vad".to_string(),
-                            version: "v5.1.2".to_string(),
-                            speech_intervals: intervals.clone(),
-                            non_speech_intervals: non_speech,
-                            config_used: config.clone(),
-                        };
-
-                        let result_json = serde_json::to_string(&result).unwrap_or_default();
-
-                        let _ = app_clone.emit(
-                            "media-job",
-                            MediaJobEvent {
-                                job_id: job_id_clone.clone(),
-                                state: MediaJobState::Completed,
-                                progress: Some(1.0),
-                                message: Some(result_json),
-                                error: None,
-                            },
-                        );
-                    } else if payload.code == Some(255) || payload.code.is_none() {
-                        let _ = app_clone.emit(
-                            "media-job",
-                            MediaJobEvent {
-                                job_id: job_id_clone.clone(),
-                                state: MediaJobState::Cancelled,
-                                progress: None,
-                                message: Some("Job cancelled by user".to_string()),
-                                error: None,
-                            },
-                        );
-                    } else {
-                        let _ = app_clone.emit(
-                            "media-job",
-                            MediaJobEvent {
-                                job_id: job_id_clone.clone(),
-                                state: MediaJobState::Failed,
-                                progress: None,
-                                message: None,
-                                error: Some(format!("Process exited with code {:?}", payload.code)),
-                            },
-                        );
-                    }
+                Ok(Some(line)) = stderr_reader.next_line() => {
+                    full_output.push_str(&line);
+                    full_output.push('\n');
                 }
-                _ => {}
+                else => break,
             }
+        }
+
+        let job_manager = app_clone.state::<JobManager>();
+        
+        // Wait for the child process to actually exit
+        let mut exit_code = None;
+        if let Some(mut removed_child) = job_manager.remove_job(&job_id_clone).await {
+            if let JobChild::Tokio(ref mut t_child) = removed_child {
+                let status = t_child.wait().await.unwrap_or_else(|_e| std::process::ExitStatus::default());
+                exit_code = status.code();
+            }
+        }
+
+        // Ensure cleanup happens regardless of success/failure
+        let _ = AudioExtractionService::cleanup_stt_audio(&app_clone, audio_path_clone.clone());
+
+        if exit_code == Some(0) {
+            VadDetectionService::parse_vad_output(&full_output, &mut intervals);
+            let non_speech = VadDetectionService::invert_speech_intervals(&intervals, duration_ms);
+
+            let result = VadAnalysisResult {
+                provider: "whisper.cpp/silero-vad".to_string(),
+                version: "v5.1.2".to_string(),
+                speech_intervals: intervals.clone(),
+                non_speech_intervals: non_speech,
+                config_used: config.clone(),
+            };
+
+            let result_json = serde_json::to_string(&result).unwrap_or_default();
+
+            let _ = app_clone.emit(
+                "media-job",
+                MediaJobEvent {
+                    job_id: job_id_clone.clone(),
+                    state: MediaJobState::Completed,
+                    progress: Some(1.0),
+                    message: Some(result_json),
+                    error: None,
+                },
+            );
+        } else if exit_code == Some(255) || exit_code.is_none() {
+            let _ = app_clone.emit(
+                "media-job",
+                MediaJobEvent {
+                    job_id: job_id_clone.clone(),
+                    state: MediaJobState::Cancelled,
+                    progress: None,
+                    message: Some("Job cancelled by user".to_string()),
+                    error: None,
+                },
+            );
+        } else {
+            let _ = app_clone.emit(
+                "media-job",
+                MediaJobEvent {
+                    job_id: job_id_clone.clone(),
+                    state: MediaJobState::Failed,
+                    progress: None,
+                    message: None,
+                    error: Some(format!("Process exited with code {:?}", exit_code)),
+                },
+            );
         }
     });
 

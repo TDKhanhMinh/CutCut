@@ -1,15 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use regex::Regex;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager, Emitter};
-use tauri_plugin_shell::ShellExt;
-use tauri_plugin_shell::process::CommandEvent;
-use crate::models::vad::{NonSpeechInterval, SpeechInterval, VadAnalysisResult, VadConfig};
+use tauri::{AppHandle, Manager};
+use crate::models::vad::{NonSpeechInterval, SpeechInterval};
 use crate::services::resource_manager::ResourceManager;
 use crate::models::resource::ResourceState;
-use crate::services::media_job::JobManager;
-use crate::models::media_job::{MediaJobEvent, MediaJobState};
-use crate::services::audio_extraction_service::AudioExtractionService;
 
 pub struct VadDetectionService;
 
@@ -41,11 +36,11 @@ impl VadDetectionService {
         // Example: Speech segment 0: start = 13.00, end = 57.00
         if let Ok(re) = Regex::new(r"start = ([\d.]+),\s*end = ([\d.]+)") {
             for caps in re.captures_iter(output) {
-                let start_cs: f64 = caps[1].parse().unwrap_or(0.0);
-                let end_cs: f64 = caps[2].parse().unwrap_or(0.0);
+                let start_sec: f64 = caps[1].parse().unwrap_or(0.0);
+                let end_sec: f64 = caps[2].parse().unwrap_or(0.0);
                 
-                let start_ms = (start_cs * 10.0).round() as u64;
-                let end_ms = (end_cs * 10.0).round() as u64;
+                let start_ms = (start_sec * 1000.0).round() as u64;
+                let end_ms = (end_sec * 1000.0).round() as u64;
 
                 intervals.push(SpeechInterval { start_ms, end_ms });
             }
