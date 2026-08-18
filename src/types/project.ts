@@ -12,12 +12,36 @@ export interface Project {
     media: MediaSource[];
     transcript: Transcript | null;
     editPlan: EditPlan;
-    captions: CaptionSettings | null;
+    captions: CaptionStyle | null;
     captionCues: CaptionCue[];
     settings: OutputSettings;
     silenceSettings: SilenceConfig;
     artifacts: ArtifactRecord[];
 }
+
+export interface CaptionStyle {
+    presetId: string;
+    
+    // Typography
+    fontFamily: string;
+    fontWeight: number;
+    fontStyle: string;
+    
+    // Geometry
+    fontSizeVh: number;
+    positionXVw: number;
+    positionYVh: number;
+    alignment: string;
+    
+    // Colors & FX
+    primaryColor: string;
+    outlineColor: string | null;
+    outlineWidthVh: number | null;
+    backgroundColor: string | null;
+    backgroundOpacity: number | null;
+}
+
+
 
 export interface CaptionCue {
     id: string;
