@@ -17,4 +17,5 @@ pub mod edit_validator;
 pub mod filler_detector;
 pub mod caption_segmenter;
 pub mod subtitle_generator;
+pub mod ai;
 pub mod style_mapper;
