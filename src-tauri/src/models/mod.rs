@@ -7,3 +7,4 @@ pub mod whisper;
 pub mod artifact;
 pub mod artifact_registry;
 pub mod hardware;
+pub mod preset;

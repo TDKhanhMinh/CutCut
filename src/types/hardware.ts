@@ -9,3 +9,14 @@ export interface RuntimeProfile {
     supportedAcceleration: string; // "CUDA", "CPU_AVX2", "CPU_BASIC"
     fallbackReason: string | null;
 }
+
+export type PresetType = 'fast' | 'balanced' | 'accurate' | 'custom';
+
+export interface PresetResolution {
+    preset: PresetType;
+    targetModelId: string;
+    targetBackend: string;
+    isModelInstalled: boolean;
+    fallbackReason: string | null;
+    tradeoffDescription: string;
+}
