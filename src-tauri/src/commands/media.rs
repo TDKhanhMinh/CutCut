@@ -212,3 +212,168 @@ pub fn cleanup_stt_audio(app: AppHandle, temp_path: String) -> Result<(), String
     .map_err(|e| e.to_string())
 }
 
+use sha2::{Sha256, Digest};
+use std::path::PathBuf;
+
+fn generate_preview_signature(
+    project: &crate::models::project::Project,
+    start_ms: u64,
+    end_ms: u64,
+) -> String {
+    let mut hasher = Sha256::new();
+    
+    // Hash relevant project state
+    if let Ok(plan_json) = serde_json::to_string(&project.edit_plan) {
+        hasher.update(plan_json.as_bytes());
+    }
+    if let Ok(captions_json) = serde_json::to_string(&project.captions) {
+        hasher.update(captions_json.as_bytes());
+    }
+    if let Ok(cues_json) = serde_json::to_string(&project.caption_cues) {
+        hasher.update(cues_json.as_bytes());
+    }
+    if let Ok(settings_json) = serde_json::to_string(&project.settings) {
+        hasher.update(settings_json.as_bytes());
+    }
+    
+    // Hash range
+    hasher.update(&start_ms.to_be_bytes());
+    hasher.update(&end_ms.to_be_bytes());
+    
+    let result = hasher.finalize();
+    hex::encode(result)
+}
+
+#[derive(serde::Serialize)]
+pub struct PreviewResponse {
+    pub job_id: Option<String>,
+    pub cached_path: Option<String>,
+}
+
+#[tauri::command]
+pub async fn preview_prototype_video(
+    app: AppHandle,
+    project: crate::models::project::Project,
+    start_ms: u64,
+    end_ms: u64,
+) -> Result<PreviewResponse, String> {
+    let signature = generate_preview_signature(&project, start_ms, end_ms);
+    let cache_dir = std::env::temp_dir().join("cutcut_preview_cache");
+    let _ = std::fs::create_dir_all(&cache_dir);
+    
+    let output_path = cache_dir.join(format!("preview_{}.mp4", signature));
+    let output_path_str = output_path.to_string_lossy().to_string();
+
+    // Cache Hit
+    if output_path.exists() {
+        return Ok(PreviewResponse {
+            job_id: None,
+            cached_path: Some(output_path_str),
+        });
+    }
+
+    // Cache Miss -> Render
+    let job_id = uuid::Uuid::new_v4().to_string();
+    let media = project.media.first().ok_or("No media in project")?;
+    let input_path = media.path.clone();
+
+    let mut cut_exprs = Vec::new();
+    for action in &project.edit_plan.actions {
+        if action.enabled {
+            if let crate::models::edit_plan::ActionPayload::Cut { start_ms, end_ms } = action.payload {
+                let start_s = start_ms as f64 / 1000.0;
+                let end_s = end_ms as f64 / 1000.0;
+                cut_exprs.push(format!("between(t,{},{})", start_s, end_s));
+            }
+        }
+    }
+
+    let select_expr = if cut_exprs.is_empty() {
+        "".to_string()
+    } else {
+        format!("not({})", cut_exprs.join("+"))
+    };
+
+    let mut vf_filters = vec!["scale=-2:720".to_string()];
+    let mut af_filters = Vec::new();
+
+    if !select_expr.is_empty() {
+        vf_filters.push(format!("select='{}'", select_expr));
+        vf_filters.push("setpts=N/FRAME_RATE/TB".to_string());
+        
+        af_filters.push(format!("aselect='{}'", select_expr));
+        af_filters.push("asetpts=N/SR/TB".to_string());
+    }
+
+    if let Some(style) = &project.captions {
+        let cues = &project.caption_cues;
+        if !cues.is_empty() {
+            let ass_content = crate::services::subtitle_generator::SubtitleGenerator::generate_ass_content(
+                cues,
+                style,
+                &project.edit_plan,
+                1280,
+                720,
+            );
+            
+            let ass_path = crate::services::subtitle_generator::SubtitleGenerator::write_temp_ass_file(&ass_content)?;
+            let mut path_str = ass_path.to_string_lossy().to_string().replace("\\", "/");
+            if let Some(pos) = path_str.find(':') {
+                path_str.insert(pos, '\\');
+            }
+            
+            vf_filters.push(format!("ass='{}'", path_str));
+        }
+    }
+
+    let mut args = vec![
+        "-y".to_string(),
+        "-i".to_string(),
+        input_path,
+    ];
+
+    if !vf_filters.is_empty() {
+        args.push("-vf".to_string());
+        args.push(vf_filters.join(","));
+    }
+
+    if !af_filters.is_empty() {
+        args.push("-af".to_string());
+        args.push(af_filters.join(","));
+    }
+
+    let start_s = start_ms as f64 / 1000.0;
+    let end_s = end_ms as f64 / 1000.0;
+    let duration_s = end_s - start_s;
+
+    // Use output seeking to maintain perfect filter semantics and parity with export
+    args.extend_from_slice(&[
+        "-ss".to_string(),
+        format!("{:.3}", start_s),
+        "-t".to_string(),
+        format!("{:.3}", duration_s),
+        "-c:v".to_string(),
+        "libx264".to_string(),
+        "-preset".to_string(),
+        "ultrafast".to_string(), // use ultrafast for preview
+        "-crf".to_string(),
+        "28".to_string(), // lower quality for fast preview
+        "-c:a".to_string(),
+        "aac".to_string(),
+        "-progress".to_string(),
+        "pipe:1".to_string(),
+        output_path_str,
+    ]);
+
+    let total_duration_us = ((duration_s) * 1_000_000.0) as u64;
+
+    crate::services::media_job::spawn_ffmpeg_job(app, job_id.clone(), args, Some(total_duration_us))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(PreviewResponse {
+        job_id: Some(job_id),
+        cached_path: None, // Still generating
+    })
+}
+
