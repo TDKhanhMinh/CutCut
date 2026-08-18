@@ -83,14 +83,14 @@ impl FusionService {
         let flush = |start: usize, end: usize, state_type: MsState, cands: &mut Vec<NonSpeechCandidate>| {
             if start >= end { return; }
             let mut conf = Confidence::High;
-            let mut reason = "silence_and_noise".to_string();
+            let mut reason = "silence".to_string();
             
             if state_type == MsState::LowConfidence {
                 conf = Confidence::Low;
-                reason = "uncertain_speech".to_string();
+                reason = "uncertain".to_string();
             } else if state_type == MsState::MediumConfidence {
                 conf = Confidence::Medium;
-                reason = "background_noise".to_string();
+                reason = "noise_only".to_string();
             }
 
             // Calculate original durations loosely
