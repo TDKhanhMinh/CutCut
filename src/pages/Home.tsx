@@ -2,9 +2,10 @@ import { useProjectStore } from "../stores/useProjectStore";
 import { MediaImporter } from "../components/media/MediaImporter";
 import { VideoPreview } from "../components/media/VideoPreview";
 import { ExportPanel } from "../components/media/ExportPanel";
+import { MediaRelink } from "../components/media/MediaRelink";
 
 export function Home() {
-  const { activeProject, updateProject } = useProjectStore();
+  const { activeProject, updateProject, missingMediaIds } = useProjectStore();
 
   if (!activeProject) {
     return (
@@ -19,6 +20,7 @@ export function Home() {
 
   // We use the first media source as our active demo for now
   const sourceData = activeProject.media.length > 0 ? activeProject.media[0] : null;
+  const isMissing = sourceData ? missingMediaIds.includes(sourceData.id) : false;
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
@@ -31,18 +33,24 @@ export function Home() {
         Temporarily adapting MediaImporter to update the project media array
         instead of local component state, so it triggers Autosave.
       */}
-      <MediaImporter onMetadataParsed={(meta) => {
-          updateProject((draft) => {
-              draft.media = [{
-                  id: "demo-media-1",
-                  path: meta.path,
-                  metadata: meta
-              }];
-          });
-      }} />
+      {!sourceData && (
+        <MediaImporter onMetadataParsed={(meta) => {
+            updateProject((draft) => {
+                draft.media = [{
+                    id: "demo-media-1",
+                    path: meta.path,
+                    metadata: meta
+                }];
+            });
+        }} />
+      )}
 
-      {sourceData && (
-        <div className="flex flex-col xl:flex-row gap-4 items-start">
+      {sourceData && isMissing && (
+        <MediaRelink mediaId={sourceData.id} oldPath={sourceData.path} />
+      )}
+
+      {sourceData && !isMissing && (
+        <div className="flex flex-col xl:flex-row gap-4 items-start mt-4">
             <VideoPreview path={sourceData.path} />
             <ExportPanel inputPath={sourceData.path} totalDurationSec={sourceData.metadata.durationSec} />
         </div>

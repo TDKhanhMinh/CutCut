@@ -109,3 +109,10 @@ pub async fn export_prototype_video(
 
     Ok(job_id)
 }
+
+/// Tauri command: Check if a media file exists at the given path.
+#[tauri::command]
+pub async fn check_media_exists(path: String) -> Result<bool, String> {
+    Ok(std::path::Path::new(&path).exists())
+}
+
