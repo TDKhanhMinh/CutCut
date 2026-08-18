@@ -55,7 +55,7 @@ export function Home() {
       {sourceData && !isMissing && (
         <div className="flex flex-col xl:flex-row gap-4 items-start mt-4">
             <div className="flex-1 max-w-xl">
-                <VideoPreview ref={videoPreviewRef} path={sourceData.path} />
+                <VideoPreview ref={videoPreviewRef} path={sourceData.path} editPlan={activeProject.editPlan} />
                 <ExportPanel inputPath={sourceData.path} totalDurationSec={sourceData.metadata.durationSec} />
             </div>
             
