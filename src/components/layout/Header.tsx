@@ -2,6 +2,7 @@ import { Bell, Menu, Sun, Moon } from "lucide-react";
 import { useAppStore } from "../../store";
 import { Button } from "../ui/button";
 import { useTheme } from "../theme-provider";
+import { ModelManager } from "../settings/ModelManager";
 
 export function Header() {
   const toggleSidebar = useAppStore((state) => state.toggleSidebar);
@@ -23,6 +24,7 @@ export function Header() {
         </h2>
       </div>
       <div className="flex items-center gap-2">
+        <ModelManager />
         <Button
           variant="ghost"
           size="icon"

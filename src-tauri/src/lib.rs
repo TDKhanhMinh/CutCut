@@ -30,6 +30,12 @@ pub fn run() {
             commands::project::load_project_from_disk,
             commands::media::check_media_exists,
             commands::whisper::transcribe_audio,
+            commands::resource::get_models,
+            commands::resource::get_model_state,
+            commands::resource::download_model,
+            commands::resource::delete_model,
+            commands::resource::get_active_model,
+            commands::resource::set_active_model,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
