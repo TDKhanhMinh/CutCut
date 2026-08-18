@@ -14,3 +14,4 @@ pub mod vad_detector;
 pub mod fusion_service;
 pub mod suggestion_service;
 pub mod edit_validator;
+pub mod filler_detector;
