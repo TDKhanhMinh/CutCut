@@ -75,8 +75,6 @@ export function ReviewControls({ mediaId, onPreview }: ReviewControlsProps) {
                     <SuggestionCard 
                         key={s.action.id} 
                         suggestion={s} 
-                        startMs={s.action.payload.start_ms || s.action.payload.startMs || 0}
-                        endMs={s.action.payload.end_ms || s.action.payload.endMs || 0}
                         onToggle={handleToggle}
                         onPreview={onPreview}
                     />

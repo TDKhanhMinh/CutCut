@@ -3,29 +3,33 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Play } from "lucide-react";
+import { EditAction, CutPayload } from "@/types/project";
+import { DetectorEvidence } from "@/types/fusion";
 
 export interface CutSuggestion {
-    action: any; // Mapped to EditAction later
-    evidence: any;
+    action: EditAction;
+    evidence: DetectorEvidence;
     source_version: string;
 }
 
 interface SuggestionCardProps {
     suggestion: CutSuggestion;
-    startMs: number;
-    endMs: number;
     onToggle: (id: string, enabled: boolean) => void;
     onPreview: (startMs: number, endMs: number) => void;
 }
 
-export function SuggestionCard({ suggestion, startMs, endMs, onToggle, onPreview }: SuggestionCardProps) {
+export function SuggestionCard({ suggestion, onToggle, onPreview }: SuggestionCardProps) {
+    // Type-safe payload extraction — payload is a discriminated union by 'type' field
+    const payload = suggestion.action.payload as CutPayload;
+    const startMs = payload.startMs;
+    const endMs = payload.endMs;
     const durationSec = ((endMs - startMs) / 1000).toFixed(1);
     
     // Map reason to friendly badge color
     const getBadgeVariant = (reason: string) => {
-        if (reason === "silence") return "default";
-        if (reason === "noise_only") return "secondary";
-        return "destructive";
+        if (reason === "silence") return "default" as const;
+        if (reason === "noise_only") return "secondary" as const;
+        return "destructive" as const;
     };
 
     const getReasonLabel = (reason: string) => {
