@@ -44,6 +44,7 @@ export function Workspace() {
           transcript={mockTranscript}
           activeSegmentId={activeSegmentId}
           onSegmentClick={(id) => setActiveSegmentId(id)}
+          onSegmentEdit={(id, newText) => console.log(`[Mock] Edited segment ${id}: ${newText}`)}
         />
       </div>
     </div>

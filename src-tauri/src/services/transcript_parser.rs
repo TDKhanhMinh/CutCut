@@ -33,10 +33,12 @@ impl TranscriptParser {
             let segment = TranscriptSegment {
                 id: uuid::Uuid::new_v4().to_string(),
                 text,
+                original_text: None,
                 start_ms,
                 end_ms,
                 speaker: None,
                 is_filler: false,
+                is_modified: false,
             };
             segments.push(segment);
         }

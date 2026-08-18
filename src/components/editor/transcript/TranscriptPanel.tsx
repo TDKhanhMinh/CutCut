@@ -10,6 +10,7 @@ interface TranscriptPanelProps {
   cutSegmentIds?: string[];
   modifiedSegmentIds?: string[];
   onSegmentClick?: (id: string) => void;
+  onSegmentEdit?: (id: string, newText: string) => void;
   autoScroll?: boolean;
 }
 
@@ -20,6 +21,7 @@ export const TranscriptPanel = ({
   cutSegmentIds = [],
   modifiedSegmentIds = [],
   onSegmentClick,
+  onSegmentEdit,
   autoScroll = true,
 }: TranscriptPanelProps) => {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -96,6 +98,7 @@ export const TranscriptPanel = ({
                   isCut={cutSegmentIds.includes(segment.id)}
                   isModified={modifiedSegmentIds.includes(segment.id)}
                   onClick={onSegmentClick}
+                  onEdit={onSegmentEdit}
                 />
               </div>
             );
