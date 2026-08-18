@@ -42,9 +42,9 @@ export function MediaImporter({ onMetadataParsed }: { onMetadataParsed: (meta: M
             const result = await invoke<MediaSourceMetadata>('read_media_metadata', { path: filePath });
             setMetadata(result);
             onMetadataParsed(result);
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error('Failed to read metadata:', e);
-            setError(e.toString());
+            setError(e instanceof Error ? e.message : String(e));
         } finally {
             setLoading(false);
         }

@@ -65,10 +65,10 @@ export function ExportPanel({ inputPath, totalDurationSec }: ExportPanelProps) {
             });
 
             setJobId(newJobId);
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error(e);
             setExporting(false);
-            setResult(`Failed to start export: ${e.toString()}`);
+            setResult(`Failed to start export: ${e instanceof Error ? e.message : String(e)}`);
         }
     };
 

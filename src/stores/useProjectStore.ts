@@ -1,6 +1,6 @@
+import { invoke } from '@tauri-apps/api/core';
 import { create } from 'zustand';
 import { Project } from '../types/project';
-import { invoke } from '@tauri-apps/api/core';
 
 interface ProjectState {
     activeProject: Project | null;
