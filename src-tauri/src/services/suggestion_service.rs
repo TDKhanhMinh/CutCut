@@ -5,6 +5,7 @@ use crate::models::suggestion::CutSuggestion;
 pub fn generate_suggestions(
     source_media_id: &str,
     candidates: &[NonSpeechCandidate],
+    analysis_version: &str,
     existing_timeline: Option<&EditTimeline>,
 ) -> Vec<CutSuggestion> {
     let mut suggestions = Vec::new();
@@ -49,6 +50,7 @@ pub fn generate_suggestions(
             reason: candidate.reason.clone(),
             evidence: candidate.evidence.clone(),
             is_enabled,
+            source_version: analysis_version.to_string(),
         });
     }
 
@@ -90,12 +92,13 @@ mod tests {
             },
         ];
 
-        let suggestions = generate_suggestions("media_1", &candidates, None);
+        let suggestions = generate_suggestions("media_1", &candidates, "v1", None);
         assert_eq!(suggestions.len(), 2);
 
         // High confidence -> enabled
         assert!(suggestions[0].is_enabled);
         assert_eq!(suggestions[0].id, "cut_media_1_0_1000");
+        assert_eq!(suggestions[0].source_version, "v1");
 
         // Low confidence -> disabled
         assert!(!suggestions[1].is_enabled);
@@ -126,7 +129,7 @@ mod tests {
             ],
         };
 
-        let suggestions = generate_suggestions("media_1", &candidates, Some(&timeline));
+        let suggestions = generate_suggestions("media_1", &candidates, "v1", Some(&timeline));
         assert_eq!(suggestions.len(), 1);
 
         // Should be disabled because of overlap with Keep action, despite High confidence
