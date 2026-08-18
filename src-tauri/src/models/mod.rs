@@ -6,3 +6,4 @@ pub mod resource;
 pub mod whisper;
 pub mod artifact;
 pub mod artifact_registry;
+pub mod hardware;
