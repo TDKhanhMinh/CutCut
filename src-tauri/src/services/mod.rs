@@ -12,3 +12,4 @@ pub mod hardware_detection;
 pub mod runtime_preset;
 pub mod vad_detector;
 pub mod fusion_service;
+pub mod suggestion_service;
