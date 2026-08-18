@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { Button } from '@/components/ui/button';
 
 interface ExportPanelProps {
     inputPath: string;
@@ -86,12 +87,9 @@ export function ExportPanel({ inputPath, totalDurationSec }: ExportPanelProps) {
             <h3 className="text-lg font-bold mb-4">Export Prototype</h3>
             
             {!exporting ? (
-                <button
-                    className="bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90"
-                    onClick={handleExport}
-                >
+                <Button onClick={handleExport}>
                     Export to MP4
-                </button>
+                </Button>
             ) : (
                 <div className="space-y-4">
                     <div className="flex justify-between items-center text-sm font-medium">
@@ -104,12 +102,12 @@ export function ExportPanel({ inputPath, totalDurationSec }: ExportPanelProps) {
                             style={{ width: `${Math.max(0, Math.min(100, progress * 100))}%` }}
                         ></div>
                     </div>
-                    <button
-                        className="bg-destructive text-destructive-foreground px-4 py-2 rounded-md font-medium hover:bg-destructive/90"
+                    <Button
+                        variant="destructive"
                         onClick={handleCancel}
                     >
                         Cancel
-                    </button>
+                    </Button>
                 </div>
             )}
 

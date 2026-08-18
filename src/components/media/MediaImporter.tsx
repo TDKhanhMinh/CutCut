@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
+import { Button } from '@/components/ui/button';
 
 export interface MediaSourceMetadata {
     path: string;
@@ -53,13 +54,12 @@ export function MediaImporter({ onMetadataParsed }: { onMetadataParsed: (meta: M
     return (
         <div className="p-4 border rounded-lg bg-card text-card-foreground shadow-sm m-4 max-w-xl">
             <h2 className="text-xl font-bold mb-4">Media Importer (Task 7 Test)</h2>
-            <button
-                className="bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90 disabled:opacity-50"
+            <Button
                 onClick={handleSelectFile}
                 disabled={loading}
             >
                 {loading ? 'Reading metadata...' : 'Select Video File'}
-            </button>
+            </Button>
 
             {error && (
                 <div className="mt-4 p-3 bg-destructive/20 text-destructive border border-destructive rounded text-sm">
