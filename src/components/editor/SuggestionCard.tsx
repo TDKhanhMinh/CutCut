@@ -5,13 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Play } from "lucide-react";
 
 export interface CutSuggestion {
-    id: string;
-    source_media_id: string;
-    action: any;
-    confidence: "High" | "Medium" | "Low";
-    reason: string;
+    action: any; // Mapped to EditAction later
     evidence: any;
-    is_enabled: boolean;
     source_version: string;
 }
 
@@ -46,8 +41,8 @@ export function SuggestionCard({ suggestion, startMs, endMs, onToggle, onPreview
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                         <span className="font-semibold">{durationSec}s Cut</span>
-                        <Badge variant={getBadgeVariant(suggestion.reason)}>
-                            {getReasonLabel(suggestion.reason)}
+                        <Badge variant={getBadgeVariant(suggestion.action.reason)}>
+                            {getReasonLabel(suggestion.action.reason)}
                         </Badge>
                     </div>
                     <span className="text-sm text-muted-foreground">
@@ -60,10 +55,10 @@ export function SuggestionCard({ suggestion, startMs, endMs, onToggle, onPreview
                         <Play className="h-4 w-4" />
                     </Button>
                     <div className="flex items-center gap-2">
-                        <span className="text-sm">{suggestion.is_enabled ? "Remove" : "Keep"}</span>
+                        <span className="text-sm">{suggestion.action.enabled ? "Remove" : "Keep"}</span>
                         <Switch 
-                            checked={!suggestion.is_enabled} 
-                            onCheckedChange={(checked) => onToggle(suggestion.id, !checked)} 
+                            checked={!suggestion.action.enabled} 
+                            onCheckedChange={(checked) => onToggle(suggestion.action.id, !checked)} 
                         />
                     </div>
                 </div>

@@ -11,3 +11,4 @@ pub mod preset;
 pub mod vad;
 pub mod fusion;
 pub mod suggestion;
+pub mod edit_plan;

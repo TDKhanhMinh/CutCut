@@ -1,28 +1,38 @@
 use crate::models::fusion::{NonSpeechCandidate, Confidence};
-use crate::models::project::{EditTimeline, EditAction};
+use crate::models::edit_plan::{EditPlan, EditAction, ActionPayload, ActionSource};
 use crate::models::suggestion::CutSuggestion;
 
 pub fn generate_suggestions(
     source_media_id: &str,
     candidates: &[NonSpeechCandidate],
     analysis_version: &str,
-    existing_timeline: Option<&EditTimeline>,
+    existing_plan: Option<&EditPlan>,
 ) -> Vec<CutSuggestion> {
     let mut suggestions = Vec::new();
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
 
     for candidate in candidates {
         // Deterministic ID based on source media and timestamps
         let id = format!("cut_{}_{}_{}", source_media_id, candidate.start_ms, candidate.end_ms);
 
-        // Check for overlaps with "Keep" actions in the existing timeline
-        let mut overlaps_with_keep = false;
-        if let Some(timeline) = existing_timeline {
-            for action in &timeline.actions {
-                if let EditAction::Keep { start_ms, end_ms, .. } = action {
-                    // Check overlap
-                    if candidate.start_ms < *end_ms && candidate.end_ms > *start_ms {
-                        overlaps_with_keep = true;
-                        break;
+        // Check for overlaps with "Keep" decisions in the existing plan
+        // In the new schema, a user "Keep" is simply an action (e.g. Cut) with enabled = false
+        // or a specific UserManual action. For simplicity, we just check if there's any action
+        // at this time range that user modified.
+        let mut user_overridden = false;
+        if let Some(plan) = existing_plan {
+            for action in &plan.actions {
+                if action.source == ActionSource::UserManual {
+                    if let ActionPayload::Cut { start_ms, end_ms } = action.payload {
+                        // Check overlap
+                        if candidate.start_ms < end_ms && candidate.end_ms > start_ms {
+                            user_overridden = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -30,26 +40,29 @@ pub fn generate_suggestions(
 
         // According to acceptance criteria:
         // - Do not auto-enable Uncertain/Speech-conflict (Low confidence).
-        // - Safety fixtures (Keep actions) overlap should disable the cut.
-        let is_enabled = if overlaps_with_keep {
+        // - Overlaps with user overrides disable the auto cut.
+        let is_enabled = if user_overridden {
             false
         } else {
             matches!(candidate.confidence, Confidence::High | Confidence::Medium)
         };
 
         suggestions.push(CutSuggestion {
-            id: id.clone(),
-            source_media_id: source_media_id.to_string(),
-            action: EditAction::Cut {
-                id,
+            action: EditAction {
+                id: id.clone(),
                 source_media_id: source_media_id.to_string(),
-                start_ms: candidate.start_ms,
-                end_ms: candidate.end_ms,
+                payload: ActionPayload::Cut {
+                    start_ms: candidate.start_ms,
+                    end_ms: candidate.end_ms,
+                },
+                source: ActionSource::LocalDetector,
+                reason: candidate.reason.clone(),
+                confidence: Some(format!("{:?}", candidate.confidence)),
+                enabled: is_enabled,
+                created_at: now,
+                updated_at: now,
             },
-            confidence: candidate.confidence.clone(),
-            reason: candidate.reason.clone(),
             evidence: candidate.evidence.clone(),
-            is_enabled,
             source_version: analysis_version.to_string(),
         });
     }
@@ -96,17 +109,17 @@ mod tests {
         assert_eq!(suggestions.len(), 2);
 
         // High confidence -> enabled
-        assert!(suggestions[0].is_enabled);
-        assert_eq!(suggestions[0].id, "cut_media_1_0_1000");
+        assert!(suggestions[0].action.enabled);
+        assert_eq!(suggestions[0].action.id, "cut_media_1_0_1000");
         assert_eq!(suggestions[0].source_version, "v1");
 
         // Low confidence -> disabled
-        assert!(!suggestions[1].is_enabled);
-        assert_eq!(suggestions[1].id, "cut_media_1_2000_3000");
+        assert!(!suggestions[1].action.enabled);
+        assert_eq!(suggestions[1].action.id, "cut_media_1_2000_3000");
     }
 
     #[test]
-    fn test_overlap_with_keep_action() {
+    fn test_overlap_with_user_action() {
         let candidates = vec![
             NonSpeechCandidate {
                 start_ms: 0,
@@ -118,21 +131,28 @@ mod tests {
             },
         ];
 
-        let timeline = EditTimeline {
+        let plan = EditPlan {
+            version: 1,
             actions: vec![
-                EditAction::Keep {
-                    id: "keep_1".to_string(),
+                EditAction {
+                    id: "user_cut_1".to_string(),
                     source_media_id: "media_1".to_string(),
-                    start_ms: 500,
-                    end_ms: 1500,
+                    payload: ActionPayload::Cut { start_ms: 500, end_ms: 1500 },
+                    source: ActionSource::UserManual,
+                    reason: "manual".to_string(),
+                    confidence: None,
+                    enabled: false,
+                    created_at: 0,
+                    updated_at: 0,
                 }
             ],
+            generation_metadata: None,
         };
 
-        let suggestions = generate_suggestions("media_1", &candidates, "v1", Some(&timeline));
+        let suggestions = generate_suggestions("media_1", &candidates, "v1", Some(&plan));
         assert_eq!(suggestions.len(), 1);
 
-        // Should be disabled because of overlap with Keep action, despite High confidence
-        assert!(!suggestions[0].is_enabled);
+        // Should be disabled because of overlap with User action, despite High confidence
+        assert!(!suggestions[0].action.enabled);
     }
 }

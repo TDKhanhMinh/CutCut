@@ -11,7 +11,7 @@ export interface Project {
     updatedAt: number;
     media: MediaSource[];
     transcript: Transcript | null;
-    edits: EditTimeline;
+    editPlan: EditPlan;
     captions: CaptionSettings | null;
     settings: OutputSettings;
     silenceSettings: SilenceConfig;
@@ -37,37 +37,59 @@ export interface TranscriptSegment {
     isFiller: boolean;
 }
 
-export interface EditTimeline {
+export interface EditPlan {
+    version: number;
     actions: EditAction[];
+    generationMetadata?: GenerationMetadata | null;
 }
 
-export type EditAction = 
-    | CutAction
-    | KeepAction
-    | MuteAction;
+export interface GenerationMetadata {
+    analyzerVersion?: string | null;
+    modelId?: string | null;
+    runId?: string | null;
+}
 
-export interface CutAction {
-    type: 'Cut';
-    id: string;
-    sourceMediaId: string;
+export type ActionSource = 'localDetector' | 'aiAgent' | 'userManual';
+
+export type ActionPayload = 
+    | CutPayload
+    | ZoomPayload
+    | CaptionPayload;
+
+export interface CutPayload {
+    type: 'cut';
     startMs: number;
     endMs: number;
 }
 
-export interface KeepAction {
-    type: 'Keep';
-    id: string;
-    sourceMediaId: string;
+export interface ZoomPayload {
+    type: 'zoom';
     startMs: number;
     endMs: number;
+    scale: number;
+    anchorX: number;
+    anchorY: number;
+    easing: string;
 }
 
-export interface MuteAction {
-    type: 'Mute';
-    id: string;
-    sourceMediaId: string;
+export interface CaptionPayload {
+    type: 'caption';
     startMs: number;
     endMs: number;
+    text: string;
+    styleReference?: string | null;
+}
+
+export interface EditAction {
+    id: string;
+    sourceMediaId: string;
+    payload: ActionPayload;
+    source: ActionSource;
+    reason: string;
+    confidence?: string | null;
+    enabled: boolean;
+    createdAt: number;
+    updatedAt: number;
 }
 
 export interface CaptionSettings {

@@ -27,7 +27,7 @@ export function ReviewControls({ mediaId, onPreview }: ReviewControlsProps) {
                 sourceMediaId: mediaId,
                 candidates: dummyCandidates,
                 analysisVersion: "v1",
-                existingTimeline: null
+                existingPlan: null
             });
             setSuggestions(result);
         } catch (e) {
@@ -38,15 +38,15 @@ export function ReviewControls({ mediaId, onPreview }: ReviewControlsProps) {
     };
 
     const handleToggle = (id: string, enabled: boolean) => {
-        setSuggestions(prev => prev.map(s => s.id === id ? { ...s, is_enabled: enabled } : s));
+        setSuggestions(prev => prev.map(s => s.action.id === id ? { ...s, action: { ...s.action, enabled } } : s));
     };
 
     const handleRemoveAll = () => {
-        setSuggestions(prev => prev.map(s => ({ ...s, is_enabled: false })));
+        setSuggestions(prev => prev.map(s => ({ ...s, action: { ...s.action, enabled: false } })));
     };
 
     const handleKeepAll = () => {
-        setSuggestions(prev => prev.map(s => ({ ...s, is_enabled: true })));
+        setSuggestions(prev => prev.map(s => ({ ...s, action: { ...s.action, enabled: true } })));
     };
 
     return (
@@ -73,10 +73,10 @@ export function ReviewControls({ mediaId, onPreview }: ReviewControlsProps) {
                 )}
                 {suggestions.map(s => (
                     <SuggestionCard 
-                        key={s.id} 
+                        key={s.action.id} 
                         suggestion={s} 
-                        startMs={s.action.start_ms || 0} // Safely get timestamps
-                        endMs={s.action.end_ms || 0}
+                        startMs={s.action.payload.start_ms || s.action.payload.startMs || 0}
+                        endMs={s.action.payload.end_ms || s.action.payload.endMs || 0}
                         onToggle={handleToggle}
                         onPreview={onPreview}
                     />
