@@ -3,4 +3,5 @@ pub mod media_job;
 pub mod project_migration;
 pub mod project_repository;
 pub mod resource_manager;
+pub mod transcript_parser;
 pub mod whisper_service;
