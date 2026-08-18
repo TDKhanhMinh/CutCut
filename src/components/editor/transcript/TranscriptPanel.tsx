@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo } from "react";
+import { useRef, useEffect, useMemo, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Transcript } from "@/types/transcript";
 import { TranscriptSegment } from "./TranscriptSegment";
@@ -25,6 +25,7 @@ export const TranscriptPanel = ({
   autoScroll = true,
 }: TranscriptPanelProps) => {
   const parentRef = useRef<HTMLDivElement>(null);
+  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(autoScroll);
 
   const segments = useMemo(() => transcript?.segments || [], [transcript]);
 
@@ -37,13 +38,24 @@ export const TranscriptPanel = ({
 
   // Auto-scroll to active segment
   useEffect(() => {
-    if (autoScroll && activeSegmentId && transcript) {
+    if (isAutoScrollEnabled && activeSegmentId && transcript) {
       const index = segments.findIndex((s) => s.id === activeSegmentId);
       if (index !== -1) {
         rowVirtualizer.scrollToIndex(index, { align: "center", behavior: "smooth" });
       }
     }
-  }, [activeSegmentId, autoScroll, rowVirtualizer, segments, transcript]);
+  }, [activeSegmentId, isAutoScrollEnabled, rowVirtualizer, segments, transcript]);
+
+  // Sync prop changes
+  useEffect(() => {
+    setIsAutoScrollEnabled(autoScroll);
+  }, [autoScroll]);
+
+  const handleSegmentClick = (id: string) => {
+    // Re-enable auto-scroll when user explicitly clicks a segment
+    setIsAutoScrollEnabled(true);
+    onSegmentClick?.(id);
+  };
 
   if (!transcript || segments.length === 0) {
     return (
@@ -57,7 +69,7 @@ export const TranscriptPanel = ({
   }
 
   return (
-    <div className="flex flex-col h-full w-full max-w-sm border-l bg-background shadow-sm shrink-0">
+    <div className="flex flex-col h-full w-full max-w-sm border-l bg-background shadow-sm shrink-0 relative">
       <div className="p-4 border-b shrink-0 flex items-center justify-between">
         <h3 className="font-semibold text-sm">Transcript</h3>
         <span className="text-xs text-muted-foreground">
@@ -65,10 +77,23 @@ export const TranscriptPanel = ({
         </span>
       </div>
       
+      {!isAutoScrollEnabled && activeSegmentId && (
+        <div className="absolute top-16 right-4 z-10">
+          <button
+            onClick={() => setIsAutoScrollEnabled(true)}
+            className="bg-primary/90 text-primary-foreground px-3 py-1.5 rounded-full text-xs shadow-md hover:bg-primary transition-colors cursor-pointer"
+          >
+            Resume Auto-scroll
+          </button>
+        </div>
+      )}
+
       <div
         ref={parentRef}
         className="flex-1 overflow-y-auto overflow-x-hidden"
         style={{ scrollBehavior: "smooth" }}
+        onWheel={() => setIsAutoScrollEnabled(false)}
+        onTouchMove={() => setIsAutoScrollEnabled(false)}
       >
         <div
           style={{
@@ -97,7 +122,7 @@ export const TranscriptPanel = ({
                   isSelected={selectedSegmentIds.includes(segment.id)}
                   isCut={cutSegmentIds.includes(segment.id)}
                   isModified={modifiedSegmentIds.includes(segment.id)}
-                  onClick={onSegmentClick}
+                  onClick={handleSegmentClick}
                   onEdit={onSegmentEdit}
                 />
               </div>
