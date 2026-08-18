@@ -126,25 +126,26 @@ impl FusionService {
             let st = states[i];
             let is_candidate = matches!(st, MsState::HighConfidence | MsState::MediumConfidence | MsState::LowConfidence);
             
-            let group_type = if matches!(st, MsState::HighConfidence | MsState::MediumConfidence) {
-                // Determine worst confidence in High/Medium group? Let's just track if we ever hit Medium
-                // For simplicity, let's treat High/Medium as one contiguous block type, and Low as another.
-                MsState::MediumConfidence // Default grouping type for non-speech
-            } else if st == MsState::LowConfidence {
-                MsState::LowConfidence
-            } else {
-                MsState::None
-            };
+            let group_type = st;
 
             if is_candidate {
                 if current_start.is_none() {
                     current_start = Some(i);
                     current_state_type = group_type;
-                } else if current_state_type != group_type {
-                    // Group boundary changed (e.g. from Medium to Low)
-                    flush(current_start.unwrap(), i, current_state_type, &mut candidates);
-                    current_start = Some(i);
-                    current_state_type = group_type;
+                } else {
+                    let is_high_med = matches!(current_state_type, MsState::HighConfidence | MsState::MediumConfidence);
+                    let new_is_high_med = matches!(group_type, MsState::HighConfidence | MsState::MediumConfidence);
+
+                    if is_high_med && new_is_high_med {
+                        if group_type == MsState::MediumConfidence {
+                            current_state_type = MsState::MediumConfidence;
+                        }
+                    } else if current_state_type != group_type {
+                        // Group boundary changed (e.g. from High/Medium to Low)
+                        flush(current_start.unwrap(), i, current_state_type, &mut candidates);
+                        current_start = Some(i);
+                        current_state_type = group_type;
+                    }
                 }
             } else {
                 if let Some(start) = current_start {
@@ -190,6 +191,6 @@ mod tests {
         assert_eq!(result.candidates.len(), 1);
         assert_eq!(result.candidates[0].start_ms, 100);
         assert_eq!(result.candidates[0].end_ms, 300);
-        assert!(matches!(result.candidates[0].confidence, Confidence::Medium)); // Defaults to Medium grouping
+        assert!(matches!(result.candidates[0].confidence, Confidence::High));
     }
 }
