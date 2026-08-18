@@ -1,3 +1,4 @@
+pub mod audio_extraction_service;
 pub mod media_job;
 pub mod project_migration;
 pub mod project_repository;

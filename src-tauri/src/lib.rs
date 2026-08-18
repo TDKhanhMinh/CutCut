@@ -29,6 +29,8 @@ pub fn run() {
             commands::project::save_project_to_disk,
             commands::project::load_project_from_disk,
             commands::media::check_media_exists,
+            commands::media::extract_audio_for_stt,
+            commands::media::cleanup_stt_audio,
             commands::whisper::transcribe_audio,
             commands::resource::get_models,
             commands::resource::get_model_state,
@@ -37,6 +39,10 @@ pub fn run() {
             commands::resource::get_active_model,
             commands::resource::set_active_model,
         ])
+        .setup(|app| {
+            let _ = crate::services::audio_extraction_service::AudioExtractionService::cleanup_stale_audio(app.handle());
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -116,3 +116,28 @@ pub async fn check_media_exists(path: String) -> Result<bool, String> {
     Ok(std::path::Path::new(&path).exists())
 }
 
+#[tauri::command]
+pub async fn extract_audio_for_stt(
+    app: AppHandle,
+    source_path: String,
+    job_id: String,
+    duration_us: Option<u64>,
+) -> Result<String, String> {
+    crate::services::audio_extraction_service::AudioExtractionService::extract_audio_for_stt(
+        app,
+        source_path,
+        job_id,
+        duration_us,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn cleanup_stt_audio(app: AppHandle, temp_path: String) -> Result<(), String> {
+    crate::services::audio_extraction_service::AudioExtractionService::cleanup_stt_audio(
+        &app, temp_path,
+    )
+    .map_err(|e| e.to_string())
+}
+
