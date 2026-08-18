@@ -13,3 +13,4 @@ pub mod runtime_preset;
 pub mod vad_detector;
 pub mod fusion_service;
 pub mod suggestion_service;
+pub mod edit_validator;
