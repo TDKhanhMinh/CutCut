@@ -16,4 +16,5 @@ pub mod suggestion_service;
 pub mod edit_validator;
 pub mod filler_detector;
 pub mod caption_segmenter;
+pub mod subtitle_generator;
 pub mod style_mapper;

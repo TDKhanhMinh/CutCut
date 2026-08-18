@@ -4,12 +4,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { Button } from '@/components/ui/button';
 
-interface ExportPanelProps {
-    inputPath: string;
-    totalDurationSec: number;
-}
 
-export function ExportPanel({ inputPath, totalDurationSec }: ExportPanelProps) {
+import { useProjectStore } from '@/stores/useProjectStore';
+
+export function ExportPanel() {
+    const { activeProject } = useProjectStore();
     const [exporting, setExporting] = useState(false);
     const [progress, setProgress] = useState(0);
     const [jobId, setJobId] = useState<string | null>(null);
@@ -59,10 +58,13 @@ export function ExportPanel({ inputPath, totalDurationSec }: ExportPanelProps) {
             setProgress(0);
             setExporting(true);
 
+            if (!activeProject) {
+                throw new Error("No active project");
+            }
+
             const newJobId = await invoke<string>('export_prototype_video', {
-                inputPath,
-                outputPath,
-                totalDurationSec
+                project: activeProject,
+                outputPath
             });
 
             setJobId(newJobId);

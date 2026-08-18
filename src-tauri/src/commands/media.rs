@@ -70,24 +70,93 @@ pub async fn read_media_metadata(
     crate::engines::ffmpeg::read_media_metadata(&app, path).await
 }
 
-/// Tauri command: Export a prototype MP4 video using FFmpeg.
+/// Tauri command: Export a video based on a Project's EditPlan and Captions
 #[tauri::command]
 pub async fn export_prototype_video(
     app: AppHandle,
-    input_path: String,
+    project: crate::models::project::Project,
     output_path: String,
-    total_duration_sec: f64,
 ) -> Result<String, String> {
     let job_id = uuid::Uuid::new_v4().to_string();
     
-    // Scale to max 720p height, preserving aspect ratio. 
-    // -2 means calculate width automatically to maintain aspect ratio and ensure it's divisible by 2.
-    let args = vec![
-        "-y".to_string(), // overwrite
+    // We assume the first media is the primary video. 
+    // In V1, there is only one source media.
+    let media = project.media.first().ok_or("No media in project")?;
+    let input_path = media.path.clone();
+
+    // 1. Build Cut Filter Strings
+    let mut cut_exprs = Vec::new();
+    for action in &project.edit_plan.actions {
+        if action.enabled {
+            if let crate::models::edit_plan::ActionPayload::Cut { start_ms, end_ms } = action.payload {
+                let start_s = start_ms as f64 / 1000.0;
+                let end_s = end_ms as f64 / 1000.0;
+                cut_exprs.push(format!("between(t,{},{})", start_s, end_s));
+            }
+        }
+    }
+
+    let select_expr = if cut_exprs.is_empty() {
+        "".to_string()
+    } else {
+        format!("not({})", cut_exprs.join("+"))
+    };
+
+    // 2. Build Subtitle ASS File
+    let mut vf_filters = vec!["scale=-2:720".to_string()];
+    let mut af_filters = Vec::new();
+
+    if !select_expr.is_empty() {
+        vf_filters.push(format!("select='{}'", select_expr));
+        vf_filters.push("setpts=N/FRAME_RATE/TB".to_string());
+        
+        af_filters.push(format!("aselect='{}'", select_expr));
+        af_filters.push("asetpts=N/SR/TB".to_string());
+    }
+
+    // Generate ASS Subtitles
+    if let Some(style) = &project.captions {
+        let cues = &project.caption_cues;
+        if !cues.is_empty() {
+            // Assume 720p output height for caption generation. Width is auto (-2) but let's assume 1280 for 16:9 for ASS scaling
+            // ASS scaling is relative, so 1280x720 is a good baseline.
+            let ass_content = crate::services::subtitle_generator::SubtitleGenerator::generate_ass_content(
+                cues,
+                style,
+                &project.edit_plan,
+                1280,
+                720,
+            );
+            
+            let ass_path = crate::services::subtitle_generator::SubtitleGenerator::write_temp_ass_file(&ass_content)?;
+            let mut path_str = ass_path.to_string_lossy().to_string().replace("\\", "/");
+            // Escape colon for FFmpeg filter syntax (C:/ -> C\:/)
+            if let Some(pos) = path_str.find(':') {
+                path_str.insert(pos, '\\');
+            }
+            
+            vf_filters.push(format!("ass='{}'", path_str));
+        }
+    }
+
+    let mut args = vec![
+        "-y".to_string(),
         "-i".to_string(),
         input_path,
-        "-vf".to_string(),
-        "scale=-2:720".to_string(),
+    ];
+
+    if !vf_filters.is_empty() {
+        args.push("-vf".to_string());
+        args.push(vf_filters.join(","));
+    }
+
+    if !af_filters.is_empty() {
+        args.push("-af".to_string());
+        args.push(af_filters.join(","));
+    }
+
+    // Encoding options
+    args.extend_from_slice(&[
         "-c:v".to_string(),
         "libx264".to_string(),
         "-preset".to_string(),
@@ -99,9 +168,11 @@ pub async fn export_prototype_video(
         "-progress".to_string(),
         "pipe:1".to_string(),
         output_path,
-    ];
+    ]);
 
-    let total_duration_us = (total_duration_sec * 1_000_000.0) as u64;
+    // Duration is used for progress calculation. We should use the *output* duration ideally, 
+    // but source duration is fine for an approximate progress bar.
+    let total_duration_us = (media.metadata.duration_sec * 1_000_000.0) as u64;
 
     crate::services::media_job::spawn_ffmpeg_job(app, job_id.clone(), args, Some(total_duration_us))
         .await

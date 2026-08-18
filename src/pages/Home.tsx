@@ -62,7 +62,7 @@ export function Home() {
                     captionCues={activeProject.captionCues}
                     captionStyle={activeProject.captions}
                 />
-                <ExportPanel inputPath={sourceData.path} totalDurationSec={sourceData.metadata.durationSec} />
+                <ExportPanel />
             </div>
             
             <div className="flex-1 w-full max-w-md h-[600px]">
