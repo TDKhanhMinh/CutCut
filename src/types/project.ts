@@ -13,10 +13,21 @@ export interface Project {
     transcript: Transcript | null;
     editPlan: EditPlan;
     captions: CaptionSettings | null;
+    captionCues: CaptionCue[];
     settings: OutputSettings;
     silenceSettings: SilenceConfig;
     artifacts: ArtifactRecord[];
 }
+
+export interface CaptionCue {
+    id: string;
+    sourceSegmentIds: string[];
+    startMs: number;
+    endMs: number;
+    text: string;
+    isManualModified: boolean;
+}
+
 
 export interface MediaSource {
     id: string;

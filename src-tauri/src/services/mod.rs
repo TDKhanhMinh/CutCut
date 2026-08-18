@@ -15,3 +15,4 @@ pub mod fusion_service;
 pub mod suggestion_service;
 pub mod edit_validator;
 pub mod filler_detector;
+pub mod caption_segmenter;
