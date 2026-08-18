@@ -74,11 +74,18 @@ export const TranscriptSegment = memo(
     return (
       <div
         className={cn(
-          "flex gap-4 p-2 mx-2 my-1 rounded-md transition-colors cursor-pointer group h-full",
-          isActive ? "bg-primary/10" : "hover:bg-muted/50",
+          "flex gap-4 p-2 mx-2 my-1 rounded-md transition-colors cursor-pointer group h-full outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset",
+          isActive ? "bg-primary/10" : "hover:bg-muted/50 focus-visible:bg-muted/50",
           isSelected && "ring-2 ring-primary ring-inset",
           isCut && "opacity-50 line-through"
         )}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (!isEditing && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            onClick?.(segment.id);
+          }
+        }}
         onClick={() => {
           if (!isEditing) onClick?.(segment.id);
         }}
