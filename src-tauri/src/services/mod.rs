@@ -11,3 +11,4 @@ pub mod cache_cleanup;
 pub mod hardware_detection;
 pub mod runtime_preset;
 pub mod vad_detector;
+pub mod fusion_service;

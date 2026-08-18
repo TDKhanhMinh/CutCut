@@ -40,8 +40,9 @@ pub fn run() {
             commands::resource::set_active_model,
             commands::diagnostics::get_runtime_profile,
             commands::diagnostics::resolve_runtime_preset,
-            commands::vad::start_vad_analysis,
             services::silence_detector::start_silence_detection,
+            commands::vad::start_vad_analysis,
+            commands::fusion::fuse_non_speech_intervals,
         ])
         .setup(|app| {
             let _ = crate::services::audio_extraction_service::AudioExtractionService::cleanup_stale_audio(app.handle());

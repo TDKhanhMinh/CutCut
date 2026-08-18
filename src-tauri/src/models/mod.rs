@@ -9,3 +9,4 @@ pub mod artifact_registry;
 pub mod hardware;
 pub mod preset;
 pub mod vad;
+pub mod fusion;
