@@ -1,11 +1,14 @@
+import { useRef } from "react";
 import { useProjectStore } from "../stores/useProjectStore";
 import { MediaImporter } from "../components/media/MediaImporter";
-import { VideoPreview } from "../components/media/VideoPreview";
+import { VideoPreview, VideoPreviewRef } from "../components/media/VideoPreview";
 import { ExportPanel } from "../components/media/ExportPanel";
 import { MediaRelink } from "../components/media/MediaRelink";
+import { ReviewControls } from "../components/editor/ReviewControls";
 
 export function Home() {
   const { activeProject, updateProject, missingMediaIds } = useProjectStore();
+  const videoPreviewRef = useRef<VideoPreviewRef>(null);
 
   if (!activeProject) {
     return (
@@ -22,6 +25,10 @@ export function Home() {
   const sourceData = activeProject.media.length > 0 ? activeProject.media[0] : null;
   const isMissing = sourceData ? missingMediaIds.includes(sourceData.id) : false;
 
+  const handlePreviewSuggestion = (startMs: number, endMs: number) => {
+      videoPreviewRef.current?.playRange(startMs, endMs);
+  };
+
   return (
     <div className="flex-1 p-8 overflow-y-auto">
       <h1 className="mb-4 text-2xl font-bold">CutCut Media Toolchain</h1>
@@ -29,10 +36,6 @@ export function Home() {
         Prototype proving native file dialog, FFprobe metadata parsing, local video preview (Asset Protocol), and FFmpeg export jobs.
       </p>
       
-      {/* 
-        Temporarily adapting MediaImporter to update the project media array
-        instead of local component state, so it triggers Autosave.
-      */}
       {!sourceData && (
         <MediaImporter onMetadataParsed={(meta) => {
             updateProject((draft) => {
@@ -51,8 +54,14 @@ export function Home() {
 
       {sourceData && !isMissing && (
         <div className="flex flex-col xl:flex-row gap-4 items-start mt-4">
-            <VideoPreview path={sourceData.path} />
-            <ExportPanel inputPath={sourceData.path} totalDurationSec={sourceData.metadata.durationSec} />
+            <div className="flex-1 max-w-xl">
+                <VideoPreview ref={videoPreviewRef} path={sourceData.path} />
+                <ExportPanel inputPath={sourceData.path} totalDurationSec={sourceData.metadata.durationSec} />
+            </div>
+            
+            <div className="flex-1 w-full max-w-md h-[600px]">
+                <ReviewControls mediaId={sourceData.id} onPreview={handlePreviewSuggestion} />
+            </div>
         </div>
       )}
     </div>

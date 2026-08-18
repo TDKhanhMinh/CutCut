@@ -43,6 +43,7 @@ pub fn run() {
             services::silence_detector::start_silence_detection,
             commands::vad::start_vad_analysis,
             commands::fusion::fuse_non_speech_intervals,
+            commands::suggestion::generate_cut_suggestions,
         ])
         .setup(|app| {
             let _ = crate::services::audio_extraction_service::AudioExtractionService::cleanup_stale_audio(app.handle());
