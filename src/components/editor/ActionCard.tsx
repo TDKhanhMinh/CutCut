@@ -59,7 +59,7 @@ export function ActionCard({ action, onToggle, onPreview }: ActionCardProps) {
                             {getReasonLabel()}
                         </Badge>
                         <Badge variant="outline" className="text-xs uppercase">
-                            {getSourceLabel()}
+                            {getSourceLabel()} {action.isManualModified ? "(Mod)" : ""}
                         </Badge>
                         {action.confidence && action.source === "aiAgent" && (
                             <span className="text-xs text-muted-foreground ml-1">

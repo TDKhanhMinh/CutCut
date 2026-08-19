@@ -59,6 +59,7 @@ pub fn generate_suggestions(
                 reason: candidate.reason.clone(),
                 confidence: Some(format!("{:?}", candidate.confidence)),
                 enabled: is_enabled,
+                is_manual_modified: None,
                 created_at: now,
                 updated_at: now,
             },
@@ -142,6 +143,7 @@ mod tests {
                     reason: "manual".to_string(),
                     confidence: None,
                     enabled: false,
+                    is_manual_modified: None,
                     created_at: 0,
                     updated_at: 0,
                 }

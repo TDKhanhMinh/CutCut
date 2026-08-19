@@ -130,6 +130,7 @@ export interface EditAction {
     reason: string;
     confidence?: string | null;
     enabled: boolean;
+    isManualModified?: boolean;
     createdAt: number;
     updatedAt: number;
 }

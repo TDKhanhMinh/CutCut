@@ -251,6 +251,7 @@ mod tests {
             reason: "test".to_string(),
             confidence: None,
             enabled: true,
+            is_manual_modified: None,
             created_at: 0,
             updated_at: 0,
             payload: ActionPayload::Cut {

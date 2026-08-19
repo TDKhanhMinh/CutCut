@@ -117,6 +117,7 @@ impl FillerCandidate {
             confidence,
             // Disabled by default — user must review.
             enabled: false,
+            is_manual_modified: None,
             created_at,
             updated_at: created_at,
         }

@@ -46,8 +46,10 @@ impl AiMergerService {
 
                     if start_diff <= Self::OVERLAP_TOLERANCE_MS && end_diff <= Self::OVERLAP_TOLERANCE_MS {
                         is_duplicate = true;
-                        if !existing_action.enabled {
-                            user_rejected = true;
+                        if existing_action.is_manual_modified == Some(true) {
+                            user_rejected = true; // User explicitly modified this action
+                        } else if !existing_action.enabled {
+                            user_rejected = true; // Legacy fallback for rejected actions
                         }
                         break;
                     }
@@ -80,6 +82,7 @@ impl AiMergerService {
                 reason: format!("{} ({})", ai_action.reason, ai_action.taxonomy),
                 confidence: Some(ai_action.confidence.to_string()),
                 enabled: true, // Proposed action defaults to enabled
+                is_manual_modified: None,
                 created_at: 0,
                 updated_at: 0,
             };
@@ -129,6 +132,7 @@ mod tests {
             reason: "silence".to_string(),
             confidence: None,
             enabled: true,
+            is_manual_modified: None,
             created_at: 0,
             updated_at: 0,
         }]);
@@ -157,6 +161,7 @@ mod tests {
             reason: "manual".to_string(),
             confidence: None,
             enabled: false,
+            is_manual_modified: Some(true),
             created_at: 0,
             updated_at: 0,
         }]);

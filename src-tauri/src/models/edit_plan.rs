@@ -45,6 +45,7 @@ pub struct EditAction {
     pub reason: String,
     pub confidence: Option<String>,
     pub enabled: bool,
+    pub is_manual_modified: Option<bool>,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -82,6 +83,7 @@ mod tests {
                     reason: "silence".to_string(),
                     confidence: Some("High".to_string()),
                     enabled: true,
+                    is_manual_modified: None,
                     created_at: 0,
                     updated_at: 0,
                 },
@@ -96,6 +98,7 @@ mod tests {
                     reason: "face_detected".to_string(),
                     confidence: None,
                     enabled: true,
+                    is_manual_modified: None,
                     created_at: 0,
                     updated_at: 0,
                 }

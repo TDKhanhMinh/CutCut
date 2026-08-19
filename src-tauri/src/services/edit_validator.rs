@@ -211,6 +211,7 @@ mod tests {
             reason: "silence".to_string(),
             confidence: None,
             enabled,
+            is_manual_modified: None,
             created_at: 0,
             updated_at: 0,
         }

@@ -88,6 +88,7 @@ export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
             const action = draft.editPlan.actions.find(a => a.id === id);
             if (action) {
                 action.enabled = enabled;
+                action.isManualModified = true;
             }
         });
     };
@@ -96,7 +97,12 @@ export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
         updateProject(draft => {
             if (!draft) return;
             const targetIds = new Set(displayActions.filter(a => a.payload.type === "cut").map(a => a.id));
-            draft.editPlan.actions.forEach(a => { if (targetIds.has(a.id)) a.enabled = false; });
+            draft.editPlan.actions.forEach(a => { 
+                if (targetIds.has(a.id)) {
+                    a.enabled = false; 
+                    a.isManualModified = true;
+                }
+            });
         });
     };
 
@@ -104,7 +110,12 @@ export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
         updateProject(draft => {
             if (!draft) return;
             const targetIds = new Set(displayActions.filter(a => a.payload.type === "cut").map(a => a.id));
-            draft.editPlan.actions.forEach(a => { if (targetIds.has(a.id)) a.enabled = true; });
+            draft.editPlan.actions.forEach(a => { 
+                if (targetIds.has(a.id)) {
+                    a.enabled = true; 
+                    a.isManualModified = true;
+                }
+            });
         });
     };
 
