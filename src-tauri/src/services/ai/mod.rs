@@ -1,4 +1,4 @@
-pub mod gemini;
+pub mod supabase;
 pub mod mock;
 
 use async_trait::async_trait;
