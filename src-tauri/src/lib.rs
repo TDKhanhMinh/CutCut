@@ -47,6 +47,7 @@ pub fn run() {
             commands::auth::set_secure_token,
             commands::auth::get_secure_token,
             commands::auth::delete_secure_token,
+            commands::device::get_or_create_installation_id,
         ])
         .setup(|app| {
             let _ = crate::services::audio_extraction_service::AudioExtractionService::cleanup_stale_audio(app.handle());

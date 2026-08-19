@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuthStore } from "../stores/useAuthStore";
+import { useEntitlementStore } from "../stores/useEntitlementStore";
 import { AuthDialog } from "../components/editor/AuthDialog";
 import { useProjectStore } from "../stores/useProjectStore";
 import { MediaImporter } from "../components/media/MediaImporter";
@@ -18,6 +19,7 @@ export function Home() {
   const videoPreviewRef = useRef<VideoPreviewRef>(null);
 
   const { user, isInitialized, initialize, signOut } = useAuthStore();
+  const { plan, loading: entitlementLoading } = useEntitlementStore();
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -59,7 +61,9 @@ export function Home() {
         <div className="flex flex-col items-end gap-2">
             <div className="flex items-center gap-2">
                 {user ? (
-                    <span className="text-sm text-green-500 font-medium mr-2">Signed In: {user.email}</span>
+                    <span className="text-sm text-green-500 font-medium mr-2">
+                      {user.email} <span className="text-xs ml-1 bg-green-500/20 px-2 py-0.5 rounded">{entitlementLoading ? "..." : plan}</span>
+                    </span>
                 ) : (
                     <span className="text-sm text-muted-foreground mr-2">Offline / Signed Out</span>
                 )}

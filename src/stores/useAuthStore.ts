@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { useEntitlementStore } from './useEntitlementStore';
 
 interface AuthState {
   user: User | null;
@@ -18,11 +19,25 @@ export const useAuthStore = create<AuthState>((set) => ({
   initialize: async () => {
     // Check initial session
     const { data: { session } } = await supabase.auth.getSession();
-    set({ session, user: session?.user ?? null, isInitialized: true });
+    const user = session?.user ?? null;
+    set({ session, user, isInitialized: true });
+    
+    if (user) {
+        useEntitlementStore.getState().fetchEntitlements(user.id);
+    } else {
+        useEntitlementStore.getState().clearEntitlements();
+    }
 
     // Listen for auth changes
     supabase.auth.onAuthStateChange((_event, newSession) => {
-      set({ session: newSession, user: newSession?.user ?? null });
+      const newUser = newSession?.user ?? null;
+      set({ session: newSession, user: newUser });
+      
+      if (newUser) {
+          useEntitlementStore.getState().fetchEntitlements(newUser.id);
+      } else {
+          useEntitlementStore.getState().clearEntitlements();
+      }
     });
   },
 

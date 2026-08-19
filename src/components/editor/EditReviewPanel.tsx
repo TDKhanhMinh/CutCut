@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { ActionCard } from "./ActionCard";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useEntitlementStore } from "@/stores/useEntitlementStore";
 import { AuthDialog } from "./AuthDialog";
 
 interface EditReviewPanelProps {
@@ -18,6 +19,7 @@ type FilterSource = "all" | "localDetector" | "aiAgent" | "userManual";
 export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
     const { activeProject, updateProject } = useProjectStore();
     const { session } = useAuthStore();
+    const { hasCapability } = useEntitlementStore();
     const [authDialogOpen, setAuthDialogOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [filterSource, setFilterSource] = useState<FilterSource>("all");
@@ -40,8 +42,12 @@ export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
     }, [actions, filterSource]);
 
     const handleRunAnalysis = async () => {
-        if (!session) {
-            setAuthDialogOpen(true);
+        if (!hasCapability('FEATURE_CLOUD_AI')) {
+            if (!session) {
+                setAuthDialogOpen(true);
+            } else {
+                alert("Your current plan does not include Cloud AI features. Please upgrade.");
+            }
             return;
         }
 
