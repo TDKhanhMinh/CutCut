@@ -24,16 +24,19 @@ pub struct AIAnalysisRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AIEditAction {
-    pub start: f32,
-    pub end: f32,
-    pub action: String, // "CUT", "KEEP", "HIGHLIGHT"
+#[serde(rename_all = "camelCase")]
+pub struct AIAnalysisAction {
+    pub start: f64,
+    pub end: f64,
+    pub action: String, // CUT, KEEP, HIGHLIGHT
     pub reason: String,
+    pub confidence: f32,
+    pub taxonomy: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AIAnalysisResponse {
-    pub actions: Vec<AIEditAction>,
+    pub actions: Vec<AIAnalysisAction>,
     pub summary: Option<String>,
     pub usage_tokens: Option<u32>, // for billing/audit
 }

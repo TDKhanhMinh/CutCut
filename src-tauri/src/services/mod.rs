@@ -19,3 +19,4 @@ pub mod caption_segmenter;
 pub mod subtitle_generator;
 pub mod ai;
 pub mod style_mapper;
+pub mod ai_merger;

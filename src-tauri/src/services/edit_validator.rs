@@ -60,6 +60,7 @@ pub fn validate_and_normalize(plan: EditPlan, media: &[MediaSource]) -> (EditPla
         // Rule 3: Valid timestamps and bounds
         let (start_ms, end_ms) = match &action.payload {
             ActionPayload::Cut { start_ms, end_ms } => (*start_ms, *end_ms),
+            ActionPayload::Highlight { start_ms, end_ms } => (*start_ms, *end_ms),
             ActionPayload::Zoom { start_ms, end_ms, scale, .. } => {
                 if *scale <= 0.0 {
                     issues.push(ValidationIssue {
@@ -103,6 +104,7 @@ pub fn validate_and_normalize(plan: EditPlan, media: &[MediaSource]) -> (EditPla
     normalized_actions.sort_by_key(|a| match a.payload {
         ActionPayload::Cut { start_ms, .. } => start_ms,
         ActionPayload::Zoom { start_ms, .. } => start_ms,
+        ActionPayload::Highlight { start_ms, .. } => start_ms,
         ActionPayload::Caption { start_ms, .. } => start_ms,
     });
 
@@ -143,10 +145,11 @@ pub fn validate_and_normalize(plan: EditPlan, media: &[MediaSource]) -> (EditPla
 
     // Pass 2: Check Zooms and Captions against active Cuts
     for action in final_actions.iter_mut() {
-        let (start_ms, end_ms, is_cut) = match action.payload {
+        let (start_ms, end_ms, is_cut) = match &action.payload {
             ActionPayload::Cut { .. } => (0, 0, true),
-            ActionPayload::Zoom { start_ms, end_ms, .. } => (start_ms, end_ms, false),
-            ActionPayload::Caption { start_ms, end_ms, .. } => (start_ms, end_ms, false),
+            ActionPayload::Zoom { start_ms, end_ms, .. } => (*start_ms, *end_ms, false),
+            ActionPayload::Highlight { start_ms, end_ms } => (*start_ms, *end_ms, false),
+            ActionPayload::Caption { start_ms, end_ms, .. } => (*start_ms, *end_ms, false),
         };
 
         if is_cut || !action.enabled {

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::models::ai::{AIAnalysisRequest, AIAnalysisResponse, AIEditAction, AIProviderError};
+use crate::models::ai::{AIAnalysisRequest, AIAnalysisResponse, AIAnalysisAction, AIProviderError};
 use super::AIProvider;
 
 pub struct MockAIProvider;
@@ -19,17 +19,21 @@ impl AIProvider for MockAIProvider {
         // Return a mock response
         Ok(AIAnalysisResponse {
             actions: vec![
-                AIEditAction {
-                    start: 0.0,
-                    end: 1.5,
-                    action: "CUT".to_string(),
-                    reason: "Silence at the beginning".to_string(),
-                },
-                AIEditAction {
+                AIAnalysisAction {
                     start: 1.5,
-                    end: 5.0,
-                    action: "KEEP".to_string(),
-                    reason: "Important dialogue".to_string(),
+                    end: 3.0,
+                    action: "CUT".to_string(),
+                    reason: "Mock false start detection".to_string(),
+                    confidence: 0.85,
+                    taxonomy: "false_start".to_string(),
+                },
+                AIAnalysisAction {
+                    start: 5.0,
+                    end: 8.5,
+                    action: "HIGHLIGHT".to_string(),
+                    reason: "Mock important statement".to_string(),
+                    confidence: 0.95,
+                    taxonomy: "important_statement".to_string(),
                 },
             ],
             summary: Some("Mock analysis completed successfully.".to_string()),
