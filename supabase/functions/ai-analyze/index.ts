@@ -51,22 +51,54 @@ Deno.serve(async (req) => {
     const modelName = 'gemini-1.5-flash'
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`
 
-    // Reconstruct prompt exactly like Desktop did
-    let prompt = "Analyze the following transcript and suggest edits (CUT/KEEP/HIGHLIGHT).\n"
-    prompt += "Return a JSON array of objects with fields: start (float), end (float), action (string), reason (string).\n\n"
-    
+    // System Prompt for Semantic Analysis V1
+    const systemInstruction = `You are a professional video editor analyzing a transcript. Your job is to propose conservative edits.
+You MUST ONLY use the EXACT start and end timestamps provided in the transcript segments. DO NOT invent timestamps.
+Apply the following taxonomy for edits:
+1. 'false_start': The speaker starts a sentence, hesitates, and restarts. Action: CUT.
+2. 'repeated_take': The speaker repeats the exact same phrasing due to a mistake. Action: CUT. (Intentional repetitions for emphasis should be KEEP).
+3. 'redundant_sentence': Filler sentences or long dead-air that add no value. Action: CUT.
+4. 'important_statement': A key hook, Call To Action, or core message. Action: HIGHLIGHT.
+5. 'none': Normal dialogue. Action: KEEP.
+
+CONSERVATIVE RULE: If you are not absolutely sure (> 80% confidence) that a segment is a mistake, you MUST default to KEEP. Do not delete content unless it is a clear error.
+Provide a short, user-readable 'reason'.
+`
+
+    let transcriptData = ""
     for (const segment of payload.segments) {
-      prompt += `[${segment.start.toFixed(2)} - ${segment.end.toFixed(2)}] ${segment.text}\n`
+      transcriptData += `[${segment.start.toFixed(2)} - ${segment.end.toFixed(2)}] ${segment.text}\n`
     }
 
     if (payload.instructions) {
-      prompt += `\nUser Instructions: ${payload.instructions}\n`
+      transcriptData += `\nUser Custom Instructions: ${payload.instructions}\n`
     }
 
     const geminiReq = {
+      system_instruction: {
+        parts: [{ text: systemInstruction }]
+      },
       contents: [{
-        parts: [{ text: prompt }],
+        parts: [{ text: transcriptData }],
       }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "ARRAY",
+          items: {
+            type: "OBJECT",
+            properties: {
+              start: { type: "NUMBER", description: "Exact start timestamp from input" },
+              end: { type: "NUMBER", description: "Exact end timestamp from input" },
+              action: { type: "STRING", enum: ["CUT", "KEEP", "HIGHLIGHT"], description: "Proposed edit action" },
+              reason: { type: "STRING", description: "Short human-readable explanation" },
+              confidence: { type: "NUMBER", description: "0.0 to 1.0 representing certainty" },
+              taxonomy: { type: "STRING", enum: ["false_start", "repeated_take", "redundant_sentence", "important_statement", "none"] }
+            },
+            required: ["start", "end", "action", "reason", "confidence", "taxonomy"]
+          }
+        }
+      }
     }
 
     const response = await fetch(url, {
@@ -85,16 +117,9 @@ Deno.serve(async (req) => {
     }
 
     const body = await response.json()
-    let text = body.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    let text = body.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
 
-    // 5. Output Validation Hook
-    // Strip markdown backticks
-    text = text.trim()
-    if (text.startsWith('```json')) text = text.substring(7)
-    if (text.startsWith('```')) text = text.substring(3)
-    if (text.endsWith('```')) text = text.substring(0, text.length - 3)
-    text = text.trim()
-
+    // JSON parsing without stripping since responseMimeType guarantees JSON output
     let actions = []
     try {
       actions = JSON.parse(text)

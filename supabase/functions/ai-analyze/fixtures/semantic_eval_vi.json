@@ -1,0 +1,48 @@
+[
+  {
+    "description": "False start / vấp",
+    "segments": [
+      { "start": 0.0, "end": 2.5, "text": "Hôm nay mình sẽ review chiếc điện thoại..." },
+      { "start": 2.5, "end": 3.0, "text": "à không" },
+      { "start": 3.0, "end": 6.5, "text": "Hôm nay mình sẽ đập hộp chiếc điện thoại này." }
+    ],
+    "expected": {
+      "0.0-2.5": "CUT (false_start)",
+      "2.5-3.0": "CUT (false_start)",
+      "3.0-6.5": "KEEP"
+    }
+  },
+  {
+    "description": "Repeated take",
+    "segments": [
+      { "start": 10.0, "end": 12.0, "text": "Sản phẩm này có pin rất là trâu." },
+      { "start": 12.0, "end": 14.5, "text": "Sản phẩm này có pin rất là trâu nha các bạn." }
+    ],
+    "expected": {
+      "10.0-12.0": "CUT (repeated_take)",
+      "12.0-14.5": "KEEP"
+    }
+  },
+  {
+    "description": "Filler / Redundant sentence",
+    "segments": [
+      { "start": 20.0, "end": 22.0, "text": "Nói chung là thì..." },
+      { "start": 22.0, "end": 25.0, "text": "Thì... kiểu như là..." },
+      { "start": 25.0, "end": 28.0, "text": "Nó xài rất là đã luôn." }
+    ],
+    "expected": {
+      "20.0-22.0": "CUT (redundant_sentence)",
+      "22.0-25.0": "CUT (redundant_sentence)",
+      "25.0-28.0": "KEEP"
+    }
+  },
+  {
+    "description": "Important Statement / Hook",
+    "segments": [
+      { "start": 30.0, "end": 33.0, "text": "Nếu các bạn thấy hay thì nhớ bấm Like và Subscribe cho kênh mình nhé." }
+    ],
+    "expected": {
+      "30.0-33.0": "HIGHLIGHT (important_statement)"
+    }
+  }
+]
