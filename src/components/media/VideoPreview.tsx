@@ -50,9 +50,10 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(
             },
             playRange: (startMs: number, endMs: number) => {
                 if (videoRef.current) {
-                    const playStartMs = Math.max(0, startMs - 1000);
+                    const playStartMs = Math.max(0, startMs - 1500);
                     videoRef.current.currentTime = playStartMs / 1000;
-                    rangeRef.current = { startMs, endMs };
+                    // We store the actual playback window we want
+                    rangeRef.current = { startMs: playStartMs, endMs: endMs + 1500 };
                     videoRef.current.play().catch(console.error);
                 }
             },
@@ -63,11 +64,9 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(
 
             if (rangeRef.current) {
                 const currentMs = videoRef.current.currentTime * 1000;
-                const { startMs, endMs } = rangeRef.current;
-
-                if (currentMs >= startMs && currentMs < endMs) {
-                    videoRef.current.currentTime = endMs / 1000;
-                } else if (currentMs >= endMs + 1000) {
+                
+                // If we've passed the context window end time, pause.
+                if (currentMs >= rangeRef.current.endMs) {
                     videoRef.current.pause();
                     rangeRef.current = null;
                 }

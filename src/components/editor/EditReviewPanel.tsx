@@ -95,14 +95,16 @@ export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
     const handleRemoveAll = () => {
         updateProject(draft => {
             if (!draft) return;
-            draft.editPlan.actions.forEach(a => { if (a.payload.type === "cut") a.enabled = false; });
+            const targetIds = new Set(displayActions.filter(a => a.payload.type === "cut").map(a => a.id));
+            draft.editPlan.actions.forEach(a => { if (targetIds.has(a.id)) a.enabled = false; });
         });
     };
 
     const handleKeepAll = () => {
         updateProject(draft => {
             if (!draft) return;
-            draft.editPlan.actions.forEach(a => { if (a.payload.type === "cut") a.enabled = true; });
+            const targetIds = new Set(displayActions.filter(a => a.payload.type === "cut").map(a => a.id));
+            draft.editPlan.actions.forEach(a => { if (targetIds.has(a.id)) a.enabled = true; });
         });
     };
 
