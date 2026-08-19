@@ -89,10 +89,17 @@ export type ActionSource = 'localDetector' | 'aiAgent' | 'userManual';
 export type ActionPayload = 
     | CutPayload
     | ZoomPayload
+    | HighlightPayload
     | CaptionPayload;
 
 export interface CutPayload {
     type: 'cut';
+    startMs: number;
+    endMs: number;
+}
+
+export interface HighlightPayload {
+    type: 'highlight';
     startMs: number;
     endMs: number;
 }

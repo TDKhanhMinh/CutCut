@@ -4,7 +4,7 @@ import { MediaImporter } from "../components/media/MediaImporter";
 import { VideoPreview, VideoPreviewRef } from "../components/media/VideoPreview";
 import { ExportPanel } from "../components/media/ExportPanel";
 import { MediaRelink } from "../components/media/MediaRelink";
-import { ReviewControls } from "../components/editor/ReviewControls";
+import { EditReviewPanel } from "../components/editor/EditReviewPanel";
 
 export function Home() {
   const { activeProject, updateProject, missingMediaIds } = useProjectStore();
@@ -66,7 +66,7 @@ export function Home() {
             </div>
             
             <div className="flex-1 w-full max-w-md h-[600px]">
-                <ReviewControls mediaId={sourceData.id} onPreview={handlePreviewSuggestion} />
+                <EditReviewPanel mediaId={sourceData.id} onPreview={handlePreviewSuggestion} />
             </div>
         </div>
       )}
