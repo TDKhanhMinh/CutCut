@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 // Removed invoke
 import { useProjectStore } from "@/stores/useProjectStore";
 import { ActionCard } from "./ActionCard";
+import { useAuthStore } from "@/stores/useAuthStore";
+import { AuthDialog } from "./AuthDialog";
 
 interface EditReviewPanelProps {
     mediaId: string;
@@ -15,6 +17,8 @@ type FilterSource = "all" | "localDetector" | "aiAgent" | "userManual";
 
 export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
     const { activeProject, updateProject } = useProjectStore();
+    const { session } = useAuthStore();
+    const [authDialogOpen, setAuthDialogOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [filterSource, setFilterSource] = useState<FilterSource>("all");
 
@@ -36,6 +40,11 @@ export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
     }, [actions, filterSource]);
 
     const handleRunAnalysis = async () => {
+        if (!session) {
+            setAuthDialogOpen(true);
+            return;
+        }
+
         setLoading(true);
         try {
             // TODO: In Task 38/39, we will call the real AI merger backend command
@@ -121,6 +130,7 @@ export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
 
     return (
         <div className="flex flex-col h-full border rounded-lg bg-card p-4">
+            <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
             <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold">Review Suggestions</h2>
                 <Button onClick={handleRunAnalysis} disabled={loading}>

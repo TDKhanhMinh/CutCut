@@ -6,3 +6,4 @@ pub mod diagnostics;
 pub mod vad;
 pub mod fusion;
 pub mod suggestion;
+pub mod auth;

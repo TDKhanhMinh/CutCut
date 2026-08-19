@@ -36,4 +36,5 @@ sysinfo = "0.30"
 regex = "1.13.1"
 async-trait = "0.1.92"
 hex = "0.4.3"
+keyring = "4.1.6"
 

@@ -1,4 +1,6 @@
-import { useRef } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useAuthStore } from "../stores/useAuthStore";
+import { AuthDialog } from "../components/editor/AuthDialog";
 import { useProjectStore } from "../stores/useProjectStore";
 import { MediaImporter } from "../components/media/MediaImporter";
 import { VideoPreview, VideoPreviewRef } from "../components/media/VideoPreview";
@@ -14,6 +16,15 @@ export function Home() {
   const { activeProject, updateProject, missingMediaIds } = useProjectStore();
   const { undo, redo, pastStates, futureStates } = useStore(useProjectStore.temporal, state => state);
   const videoPreviewRef = useRef<VideoPreviewRef>(null);
+
+  const { user, isInitialized, initialize, signOut } = useAuthStore();
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isInitialized) {
+      initialize();
+    }
+  }, [isInitialized, initialize]);
 
   if (!activeProject) {
     return (
@@ -36,6 +47,7 @@ export function Home() {
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
+      <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
       <div className="flex justify-between items-start mb-4">
         <div>
           <h1 className="text-2xl font-bold mb-1">CutCut Media Toolchain</h1>
@@ -43,16 +55,32 @@ export function Home() {
             Prototype proving native file dialog, FFprobe metadata parsing, local video preview (Asset Protocol), and FFmpeg export jobs.
           </p>
         </div>
-        {activeProject && (
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => undo()} disabled={pastStates.length === 0}>
-              <Undo2 className="h-4 w-4 mr-2"/> Undo
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => redo()} disabled={futureStates.length === 0}>
-              <Redo2 className="h-4 w-4 mr-2"/> Redo
-            </Button>
-          </div>
-        )}
+        
+        <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-2">
+                {user ? (
+                    <span className="text-sm text-green-500 font-medium mr-2">Signed In: {user.email}</span>
+                ) : (
+                    <span className="text-sm text-muted-foreground mr-2">Offline / Signed Out</span>
+                )}
+                {user ? (
+                    <Button variant="outline" size="sm" onClick={() => signOut()}>Sign Out</Button>
+                ) : (
+                    <Button variant="outline" size="sm" onClick={() => setAuthDialogOpen(true)}>Sign In</Button>
+                )}
+            </div>
+            
+            {activeProject && (
+            <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => undo()} disabled={pastStates.length === 0}>
+                <Undo2 className="h-4 w-4 mr-2"/> Undo
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => redo()} disabled={futureStates.length === 0}>
+                <Redo2 className="h-4 w-4 mr-2"/> Redo
+                </Button>
+            </div>
+            )}
+        </div>
       </div>
       
       {!sourceData && (

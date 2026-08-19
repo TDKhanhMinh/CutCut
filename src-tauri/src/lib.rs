@@ -44,6 +44,9 @@ pub fn run() {
             commands::vad::start_vad_analysis,
             commands::fusion::fuse_non_speech_intervals,
             commands::suggestion::generate_cut_suggestions,
+            commands::auth::set_secure_token,
+            commands::auth::get_secure_token,
+            commands::auth::delete_secure_token,
         ])
         .setup(|app| {
             let _ = crate::services::audio_extraction_service::AudioExtractionService::cleanup_stale_audio(app.handle());
