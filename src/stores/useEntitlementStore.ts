@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
+import { supabase } from '../lib/supabase';
 
 export type Plan = 'FREE' | 'PRO' | 'ENTERPRISE';
 
@@ -42,40 +43,35 @@ export const useEntitlementStore = create<EntitlementState>((set, get) => ({
       // 1. Get or create a random UUIDv4 for this installation via Native Rust
       const installationId = await invoke<string>('get_or_create_installation_id');
       
-      // 2. MOCK: Call to backend to register device & fetch entitlements
-      // In a real app: await supabase.functions.invoke('device-entitlement', { body: { installationId, userId } })
+      // 2. Register device on server (best-effort, do not block entitlement fetch)
+      // In production: await supabase.functions.invoke('register-device', { body: { installationId, userId } })
+      void installationId; // suppress unused warning until Edge Function is ready
       
-      console.log(`[Entitlement] Fetching for User ${userId}, Device ${installationId}`);
-      
-      // Mocking network delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // MOCK RESPONSE: Assuming user is PRO for prototype purposes
-      const mockResponse = {
-        plan: 'PRO' as Plan,
-        capabilities: [
-          'FEATURE_CLOUD_AI',
-          'FEATURE_BATCH_EXPORT',
-          'FEATURE_4K_EXPORT'
-        ],
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      };
-      
-      set({
-        plan: mockResponse.plan,
-        capabilities: mockResponse.capabilities,
-        expiresAt: mockResponse.expiresAt,
-        loading: false
-      });
-      
+      // 3. Fetch entitlement from server — do NOT mock
+      const { data, error } = await supabase
+        .from('entitlements')
+        .select('plan, capabilities, expires_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      const plan = (data?.plan ?? 'FREE') as Plan;
+      const capabilities: string[] = data?.capabilities ?? [];
+      const expiresAt: string | null = data?.expires_at ?? null;
+
+      set({ plan, capabilities, expiresAt, loading: false });
+
     } catch (e: any) {
       console.error('Failed to fetch entitlements:', e);
-      // Fallback: If network fails, we fall back to FREE, allowing local features to work
+      // Offline fallback: FREE plan, local features remain available
       set({
         plan: 'FREE',
         capabilities: [],
         error: e.message || 'Failed to fetch entitlements',
-        loading: false
+        loading: false,
       });
     }
   }
