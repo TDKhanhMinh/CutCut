@@ -1,8 +1,8 @@
-use tauri::command;
-use crate::models::fusion::NonSpeechCandidate;
 use crate::models::edit_plan::EditPlan;
+use crate::models::fusion::NonSpeechCandidate;
 use crate::models::suggestion::CutSuggestion;
 use crate::services::suggestion_service;
+use tauri::command;
 
 #[command]
 pub async fn generate_cut_suggestions(

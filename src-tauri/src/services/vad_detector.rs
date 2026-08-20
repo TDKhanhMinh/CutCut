@@ -1,16 +1,21 @@
+use crate::models::resource::ResourceState;
+use crate::models::vad::{NonSpeechInterval, SpeechInterval};
+use crate::services::resource_manager::ResourceManager;
 use anyhow::Result;
 use regex::Regex;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
-use crate::models::vad::{NonSpeechInterval, SpeechInterval};
-use crate::services::resource_manager::ResourceManager;
-use crate::models::resource::ResourceState;
 
 pub struct VadDetectionService;
 
 impl VadDetectionService {
     pub fn get_vad_binary_path(app: &AppHandle) -> Result<PathBuf> {
-        let scratch_dir = app.path().app_local_data_dir()?.join("scratch").join("whisper-bin").join("Release");
+        let scratch_dir = app
+            .path()
+            .app_local_data_dir()?
+            .join("scratch")
+            .join("whisper-bin")
+            .join("Release");
         let bin_path = scratch_dir.join("whisper-vad-speech-segments.exe");
         if bin_path.exists() {
             return Ok(bin_path);
@@ -21,14 +26,14 @@ impl VadDetectionService {
     pub fn get_vad_model_path(app: &AppHandle) -> Result<PathBuf> {
         let models_dir = ResourceManager::get_models_dir(app)?;
         let bin_path = models_dir.join("silero-vad-v5.bin");
-        
+
         let catalog = ResourceManager::get_catalog();
         if let Some(item) = catalog.iter().find(|i| i.id == "silero-vad-v5") {
             if let Ok(ResourceState::Installed) = ResourceManager::get_resource_state(app, item) {
                 return Ok(bin_path);
             }
         }
-        
+
         anyhow::bail!("VAD model not installed. Please download it first.");
     }
 
@@ -38,7 +43,7 @@ impl VadDetectionService {
             for caps in re.captures_iter(output) {
                 let start_sec: f64 = caps[1].parse().unwrap_or(0.0);
                 let end_sec: f64 = caps[2].parse().unwrap_or(0.0);
-                
+
                 let start_ms = (start_sec * 1000.0).round() as u64;
                 let end_ms = (end_sec * 1000.0).round() as u64;
 
@@ -47,7 +52,10 @@ impl VadDetectionService {
         }
     }
 
-    pub fn invert_speech_intervals(speech: &[SpeechInterval], duration_ms: u64) -> Vec<NonSpeechInterval> {
+    pub fn invert_speech_intervals(
+        speech: &[SpeechInterval],
+        duration_ms: u64,
+    ) -> Vec<NonSpeechInterval> {
         let mut non_speech = Vec::new();
         let mut last_end = 0;
 

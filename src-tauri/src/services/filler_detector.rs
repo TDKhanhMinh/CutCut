@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
+use crate::models::edit_plan::{EditAction, EditActionSource, EditActionType};
 use crate::models::project::TranscriptSegment;
-use crate::models::edit_plan::{EditAction, ActionPayload, ActionSource};
+use serde::{Deserialize, Serialize};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Filler Dictionary (V1 — Vietnamese)
@@ -27,26 +27,29 @@ impl Default for FillerDictionary {
     fn default() -> Self {
         let raw: &[(&str, &str)] = &[
             // Vietnamese filler syllables ─────────────────────────────────────
-            ("ờ",   "ờ"),
-            ("ừ",   "ừ"),
-            ("ừm",  "ừm"),
-            ("à",   "à"),
-            ("ơ",   "ơ"),
-            ("ơm",  "ơm"),
-            ("uh",  "uh"),
-            ("um",  "um"),
+            ("ờ", "ờ"),
+            ("ừ", "ừ"),
+            ("ừm", "ừm"),
+            ("à", "à"),
+            ("ơ", "ơ"),
+            ("ơm", "ơm"),
+            ("uh", "uh"),
+            ("um", "um"),
             ("uhm", "uhm"),
-            ("ờm",  "ờm"),
-            ("ầm",  "ầm"),
-            ("này", "này"),  // discourse-level — conservative
+            ("ờm", "ờm"),
+            ("ầm", "ầm"),
+            ("này", "này"), // discourse-level — conservative
         ];
 
         Self {
             version: "1.0".to_string(),
-            entries: raw.iter().map(|(t, l)| FillerEntry {
-                token: normalize(t),
-                label: l.to_string(),
-            }).collect(),
+            entries: raw
+                .iter()
+                .map(|(t, l)| FillerEntry {
+                    token: normalize(t),
+                    label: l.to_string(),
+                })
+                .collect(),
         }
     }
 }
@@ -104,15 +107,17 @@ impl FillerCandidate {
         };
 
         let confidence = match self.precision {
-            TimestampPrecision::WordLevel => Some("Medium".to_string()),
-            TimestampPrecision::SegmentLevel => None, // insufficient precision → no confidence score
+            TimestampPrecision::WordLevel => Some(0.5),
+            TimestampPrecision::SegmentLevel => None,
         };
 
         EditAction {
             id: self.id.clone(),
+            action_type: EditActionType::Cut,
             source_media_id: self.source_media_id.clone(),
-            payload: ActionPayload::Cut { start_ms, end_ms },
-            source: ActionSource::LocalDetector,
+            start_ms,
+            end_ms,
+            source: EditActionSource::Local,
             reason: format!("filler:{}", self.matched_token),
             confidence,
             // Disabled by default — user must review.
@@ -198,8 +203,16 @@ fn tokenise(text: &str) -> Vec<String> {
         .map(|w| {
             // Strip leading/trailing punctuation (Vietnamese doesn't use mid-word punct)
             let stripped = w.trim_matches(|c: char| {
-                c.is_ascii_punctuation() || c == ',' || c == '.' || c == '!' || c == '?'
-                    || c == ':' || c == ';' || c == '"' || c == '\'' || c == '…'
+                c.is_ascii_punctuation()
+                    || c == ','
+                    || c == '.'
+                    || c == '!'
+                    || c == '?'
+                    || c == ':'
+                    || c == ';'
+                    || c == '"'
+                    || c == '\''
+                    || c == '…'
             });
             normalize(stripped)
         })
@@ -304,17 +317,16 @@ mod tests {
         };
 
         let action = candidate.to_edit_action(12345, 50, 60000);
-        assert_eq!(action.source, ActionSource::LocalDetector);
+        assert_eq!(action.source, EditActionSource::Local);
         assert!(action.reason.contains("filler"));
-        assert!(!action.enabled, "must be disabled by default for user review");
+        assert!(
+            !action.enabled,
+            "must be disabled by default for user review"
+        );
         assert_eq!(action.confidence, None, "segment-level → no confidence");
 
-        if let ActionPayload::Cut { start_ms, end_ms } = action.payload {
-            // With 50ms padding: start=0 (clamped), end=2050
-            assert_eq!(start_ms, 0);
-            assert_eq!(end_ms, 2050);
-        } else {
-            panic!("Expected Cut payload");
-        }
+        assert_eq!(action.action_type, EditActionType::Cut);
+        assert_eq!(action.start_ms, 0);
+        assert_eq!(action.end_ms, 2050);
     }
 }

@@ -13,11 +13,16 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .manage(services::media_job::JobManager::default())
+        .manage(services::resource_manager::ResourceJobManager::default())
+        .manage(services::hardware_detection::RuntimeProfileCache::default())
+        .manage(services::project_repository::ProjectSaveCoordinator::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             greet,
+            commands::cache::get_cache_usage,
+            commands::cache::clear_project_cache,
             commands::media::check_media_engines,
             commands::media::get_ffmpeg_version,
             commands::media::get_ffprobe_version,
@@ -35,11 +40,16 @@ pub fn run() {
             commands::resource::get_models,
             commands::resource::get_model_state,
             commands::resource::download_model,
+            commands::resource::cancel_model_download,
             commands::resource::delete_model,
             commands::resource::get_active_model,
             commands::resource::set_active_model,
+            commands::resource::get_resource_usage,
+            commands::whisper::check_whisper_runtime,
             commands::diagnostics::get_runtime_profile,
             commands::diagnostics::resolve_runtime_preset,
+            commands::diagnostics::get_runtime_preset_preference,
+            commands::diagnostics::set_runtime_preset_preference,
             services::silence_detector::start_silence_detection,
             commands::vad::start_vad_analysis,
             commands::fusion::fuse_non_speech_intervals,

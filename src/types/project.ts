@@ -1,141 +1,109 @@
-import { MediaSourceMetadata } from "../components/media/MediaImporter";
-import { SilenceConfig } from "./silence";
-import { ArtifactRecord } from './artifact';
+import type { ArtifactRecord } from "./artifact";
+import type { MediaSourceMetadata } from "@/types/media";
+import type { SilenceConfig } from "./silence";
 
 export const CURRENT_SCHEMA_VERSION = 1;
 
+/** Canonical Project JSON contract. All timestamps use milliseconds. */
 export interface Project {
-    id: string;
-    schemaVersion: number;
-    createdAt: number;
-    updatedAt: number;
-    media: MediaSource[];
-    transcript: Transcript | null;
-    editPlan: EditPlan;
-    captions: CaptionStyle | null;
-    captionCues: CaptionCue[];
-    settings: OutputSettings;
-    silenceSettings: SilenceConfig;
-    artifacts: ArtifactRecord[];
+  id: string;
+  schemaVersion: number;
+  createdAt: number;
+  updatedAt: number;
+  media: MediaSource[];
+  transcript: Transcript | null;
+  editPlan: EditPlan;
+  captions: CaptionStyle | null;
+  /** Optional because older Rust project files do not contain caption artifacts. */
+  captionCues?: CaptionCue[];
+  /** Optional UI preference; detector settings are never required to load a project. */
+  silenceSettings?: SilenceConfig;
+  settings: OutputSettings;
+  artifacts: ArtifactRecord[];
 }
-
-export interface CaptionStyle {
-    presetId: string;
-    
-    // Typography
-    fontFamily: string;
-    fontWeight: number;
-    fontStyle: string;
-    
-    // Geometry
-    fontSizeVh: number;
-    positionXVw: number;
-    positionYVh: number;
-    alignment: string;
-    
-    // Colors & FX
-    primaryColor: string;
-    outlineColor: string | null;
-    outlineWidthVh: number | null;
-    backgroundColor: string | null;
-    backgroundOpacity: number | null;
-}
-
-
-
-export interface CaptionCue {
-    id: string;
-    sourceSegmentIds: string[];
-    startMs: number;
-    endMs: number;
-    text: string;
-    isManualModified: boolean;
-}
-
 
 export interface MediaSource {
-    id: string;
-    path: string;
-    metadata: MediaSourceMetadata;
+  id: string;
+  path: string;
+  metadata: MediaSourceMetadata;
 }
 
 export interface Transcript {
-    segments: TranscriptSegment[];
+  id: string;
+  sourceId: string;
+  modelId: string;
+  language: string;
+  generatedAt: number;
+  segments: TranscriptSegment[];
 }
 
 export interface TranscriptSegment {
-    id: string;
-    text: string;
-    startMs: number;
-    endMs: number;
-    speaker: string | null;
-    isFiller: boolean;
+  id: string;
+  text: string;
+  originalText?: string;
+  startMs: number;
+  endMs: number;
+  speaker: string | null;
+  isFiller: boolean;
+  isModified?: boolean;
 }
 
 export interface EditPlan {
-    version: number;
-    actions: EditAction[];
-    generationMetadata?: GenerationMetadata | null;
+  actions: EditAction[];
 }
 
-export interface GenerationMetadata {
-    analyzerVersion?: string | null;
-    modelId?: string | null;
-    runId?: string | null;
-}
-
-export type ActionSource = 'localDetector' | 'aiAgent' | 'userManual';
-
-export type ActionPayload = 
-    | CutPayload
-    | ZoomPayload
-    | CaptionPayload;
-
-export interface CutPayload {
-    type: 'cut';
-    startMs: number;
-    endMs: number;
-}
-
-export interface ZoomPayload {
-    type: 'zoom';
-    startMs: number;
-    endMs: number;
-    scale: number;
-    anchorX: number;
-    anchorY: number;
-    easing: string;
-}
-
-export interface CaptionPayload {
-    type: 'caption';
-    startMs: number;
-    endMs: number;
-    text: string;
-    styleReference?: string | null;
-}
+export type EditActionType = "cut" | "keep" | "mute";
+export type EditActionSource = "local" | "ai" | "user";
 
 export interface EditAction {
-    id: string;
-    sourceMediaId: string;
-    payload: ActionPayload;
-    source: ActionSource;
-    reason: string;
-    confidence?: string | null;
-    enabled: boolean;
-    createdAt: number;
-    updatedAt: number;
+  id: string;
+  type: EditActionType;
+  sourceMediaId: string;
+  startMs: number;
+  endMs: number;
+  source: EditActionSource;
+  reason: string;
+  confidence: number | null;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
 }
 
+export interface CaptionStyle {
+  presetId: string;
+  fontFamily: string;
+  fontWeight: number;
+  fontStyle: string;
+  fontSizeVh: number;
+  positionXVw: number;
+  positionYVh: number;
+  alignment: string;
+  primaryColor: string;
+  outlineColor: string | null;
+  outlineWidthVh: number | null;
+  backgroundColor: string | null;
+  backgroundOpacity: number | null;
+}
+
+export interface CaptionCue {
+  id: string;
+  sourceSegmentIds: string[];
+  startMs: number;
+  endMs: number;
+  text: string;
+  isManualModified: boolean;
+}
+
+/** Legacy/simple caption shape kept for callers that only have preset values. */
 export interface CaptionSettings {
-    style: string;
-    fontSize: number;
-    primaryColor: string;
-    strokeColor: string;
+  style: string;
+  fontSize: number;
+  primaryColor: string;
+  strokeColor: string;
 }
 
 export interface OutputSettings {
-    aspectRatio: string;
-    targetResolution: number;
-    fps: number;
+  aspectRatio: string;
+  targetResolution: number;
+  fps: number;
 }

@@ -1,19 +1,4 @@
-export interface TranscriptSegment {
-  id: string;
-  text: string;
-  originalText?: string;
-  startMs: number;
-  endMs: number;
-  speaker?: string;
-  isFiller: boolean;
-  isModified?: boolean;
-}
-
-export interface Transcript {
-  id: string;
-  sourceId: string;
-  modelId: string;
-  language: string;
-  generatedAt: number;
-  segments: TranscriptSegment[];
-}
+// Transcript is persisted as part of Project JSON. Re-export the canonical
+// contract so editor-only consumers cannot drift on nullability or timestamp
+// fields.
+export type { Transcript, TranscriptSegment } from "./project";

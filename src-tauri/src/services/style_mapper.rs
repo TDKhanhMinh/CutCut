@@ -7,8 +7,8 @@ impl CaptionStyle {
             font_family: "Arial".into(),
             font_weight: 700,
             font_style: "normal".into(),
-            font_size_vh: 0.06, // 6% of video height
-            position_x_vw: 0.5, // Center horizontally
+            font_size_vh: 0.06,  // 6% of video height
+            position_x_vw: 0.5,  // Center horizontally
             position_y_vh: 0.85, // 85% down from top
             alignment: "center".into(),
             primary_color: "#FFFFFF".into(),
@@ -38,13 +38,13 @@ impl CaptionStyle {
     }
 
     /// Generates FFmpeg drawtext filter parameters string.
-    /// 
-    /// Note: 
+    ///
+    /// Note:
     /// - Does not include `text` or `enable` properties as those vary per cue.
     /// - `fontfile` resolution relies on FFmpeg's fontconfig on the system for V1.
     pub fn to_ffmpeg_drawtext_args(&self, _video_width: u32, video_height: u32) -> String {
         let font_size = (self.font_size_vh * video_height as f64).round() as u32;
-        
+
         let mut args = vec![
             format!("fontfile='{}'", self.font_family),
             format!("fontsize={}", font_size),
@@ -54,8 +54,8 @@ impl CaptionStyle {
         // Alignment logic (center is default)
         let x_expr = match self.alignment.as_str() {
             "left" => format!("(w*{})-text_w", self.position_x_vw),
-            "right" => format!("(w*{})", self.position_x_vw), 
-            _ => format!("(w-text_w)/2"), // Center
+            "right" => format!("(w*{})", self.position_x_vw),
+            _ => "(w-text_w)/2".to_string(), // Center
         };
 
         let y_expr = format!("(h*{})-text_h", self.position_y_vh);
@@ -75,9 +75,13 @@ impl CaptionStyle {
 
         if let Some(ref bg_col) = self.background_color {
             let opacity = self.background_opacity.unwrap_or(1.0);
-            args.push(format!("box=1"));
-            args.push(format!("boxcolor={}@{}", bg_col.replace("#", "0x"), opacity));
-            args.push(format!("boxborderw=5"));
+            args.push("box=1".to_string());
+            args.push(format!(
+                "boxcolor={}@{}",
+                bg_col.replace("#", "0x"),
+                opacity
+            ));
+            args.push("boxborderw=5".to_string());
         }
 
         args.join(":")
@@ -92,7 +96,7 @@ mod tests {
     fn test_ffmpeg_drawtext_args_16_9() {
         let style = CaptionStyle::get_default_16_9_preset();
         let args = style.to_ffmpeg_drawtext_args(1920, 1080);
-        
+
         assert!(args.contains("fontfile='Arial'"));
         assert!(args.contains("fontsize=65")); // 0.06 * 1080 = 64.8 => 65
         assert!(args.contains("fontcolor=0xFFFFFF"));

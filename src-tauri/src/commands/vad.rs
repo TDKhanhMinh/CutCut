@@ -1,12 +1,12 @@
-use tauri::{command, AppHandle, Manager, Emitter};
-use crate::models::vad::{VadConfig, VadAnalysisResult};
-use crate::services::vad_detector::VadDetectionService;
-use crate::services::audio_extraction_service::AudioExtractionService;
-use crate::services::media_job::{JobManager, JobChild};
 use crate::models::media_job::{MediaJobEvent, MediaJobState};
-use tokio::process::Command;
+use crate::models::vad::{VadAnalysisResult, VadConfig};
+use crate::services::audio_extraction_service::AudioExtractionService;
+use crate::services::media_job::{JobChild, JobManager};
+use crate::services::vad_detector::VadDetectionService;
 use std::process::Stdio;
+use tauri::{command, AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
 
 #[command]
 pub async fn start_vad_analysis(
@@ -25,9 +25,11 @@ pub async fn start_vad_analysis(
     let audio_path = AudioExtractionService::extract_audio_for_stt(
         app.clone(),
         source_path,
-        job_id.clone(),
+        Some(job_id.clone()),
         Some(duration_us),
-    ).await.map_err(|e| format!("Failed to extract audio: {}", e))?;
+    )
+    .await
+    .map_err(|e| format!("Failed to extract audio: {}", e))?;
 
     let bin_path = VadDetectionService::get_vad_binary_path(&app)
         .map_err(|e| format!("VAD bin error: {}", e))?;
@@ -51,9 +53,7 @@ pub async fn start_vad_analysis(
     ];
 
     let mut cmd = Command::new(bin_path);
-    cmd.args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let mut child = cmd.spawn().map_err(|e| format!("Spawn error: {}", e))?;
 
@@ -61,7 +61,9 @@ pub async fn start_vad_analysis(
     let stderr = child.stderr.take().expect("Failed to open stderr");
 
     let job_manager = app.state::<JobManager>();
-    job_manager.add_job(job_id.clone(), JobChild::Tokio(child)).await;
+    job_manager
+        .add_job(job_id.clone(), JobChild::Tokio(Box::new(child)))
+        .await;
 
     let _ = app.emit(
         "media-job",
@@ -71,6 +73,7 @@ pub async fn start_vad_analysis(
             progress: Some(0.0),
             message: None,
             error: None,
+            result: None,
         },
     );
 
@@ -100,14 +103,15 @@ pub async fn start_vad_analysis(
         }
 
         let job_manager = app_clone.state::<JobManager>();
-        
+
         // Wait for the child process to actually exit
         let mut exit_code = None;
-        if let Some(mut removed_child) = job_manager.remove_job(&job_id_clone).await {
-            if let JobChild::Tokio(ref mut t_child) = removed_child {
-                let status = t_child.wait().await.unwrap_or_else(|_e| std::process::ExitStatus::default());
-                exit_code = status.code();
-            }
+        if let Some(JobChild::Tokio(mut t_child)) = job_manager.remove_job(&job_id_clone).await {
+            let status = t_child
+                .wait()
+                .await
+                .unwrap_or_else(|_e| std::process::ExitStatus::default());
+            exit_code = status.code();
         }
 
         // Ensure cleanup happens regardless of success/failure
@@ -135,6 +139,7 @@ pub async fn start_vad_analysis(
                     progress: Some(1.0),
                     message: Some(result_json),
                     error: None,
+                    result: None,
                 },
             );
         } else if exit_code == Some(255) || exit_code.is_none() {
@@ -146,6 +151,7 @@ pub async fn start_vad_analysis(
                     progress: None,
                     message: Some("Job cancelled by user".to_string()),
                     error: None,
+                    result: None,
                 },
             );
         } else {
@@ -157,6 +163,7 @@ pub async fn start_vad_analysis(
                     progress: None,
                     message: None,
                     error: Some(format!("Process exited with code {:?}", exit_code)),
+                    result: None,
                 },
             );
         }

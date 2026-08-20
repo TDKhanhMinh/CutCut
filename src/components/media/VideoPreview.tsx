@@ -1,146 +1,222 @@
-import { convertFileSrc } from '@tauri-apps/api/core';
-import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
-import { EditPlan, CaptionCue, CaptionStyle } from '@/types/project';
-import { useCutPreview } from '@/hooks/useCutPreview';
-import { Switch } from '@/components/ui/switch';
-import { CaptionOverlay } from './CaptionOverlay';
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
+import type { EditPlan, CaptionCue, CaptionStyle } from "@/types/project";
+import { useCutPreview } from "@/hooks/useCutPreview";
+import { Switch } from "@/components/ui/switch";
+import { CaptionOverlay } from "./CaptionOverlay";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Public API
-// ─────────────────────────────────────────────────────────────────────────────
+export type VideoSeekStatus = "applied" | "queued" | "rejected";
+
+export interface VideoSeekResult {
+  status: VideoSeekStatus;
+  timeMs: number | null;
+}
 
 export interface VideoPreviewRef {
-    seekTo: (timeMs: number) => void;
-    playRange: (startMs: number, endMs: number) => void;
+  /** Seek without changing the current play/pause state. */
+  seek: (timeMs: number) => VideoSeekResult;
+  /** Compatibility alias used by review controls. */
+  seekTo: (timeMs: number) => void;
+  /** Play a source-time range, with a one-second lead-in. */
+  playRange: (startMs: number, endMs: number) => void;
 }
+
+export type VideoPreviewHandle = VideoPreviewRef;
 
 interface VideoPreviewProps {
-    path: string;
-    editPlan?: EditPlan | null;
-    captionCues?: CaptionCue[];
-    captionStyle?: CaptionStyle | null;
+  path: string;
+  editPlan?: EditPlan | null;
+  captionCues?: CaptionCue[];
+  captionStyle?: CaptionStyle | null;
+  onCurrentTimeChange?: (currentTimeMs: number) => void;
+  onDurationChange?: (durationMs: number) => void;
+  onPlaybackChange?: (isPlaying: boolean) => void;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────────────────────────────────────
+export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(function VideoPreview(
+  {
+    path,
+    editPlan,
+    captionCues,
+    captionStyle,
+    onCurrentTimeChange,
+    onDurationChange,
+    onPlaybackChange,
+  },
+  ref,
+) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const pendingSeekMsRef = useRef<number | null>(null);
+  const rangeRef = useRef<{ startMs: number; endMs: number } | null>(null);
+  const [cutPreviewActive, setCutPreviewActive] = useState(false);
+  const [showCaptions, setShowCaptions] = useState(true);
 
-export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(
-    ({ path, editPlan, captionCues, captionStyle }, ref) => {
-        const videoRef = useRef<HTMLVideoElement>(null);
-        const assetUrl = convertFileSrc(path);
+  const { handleUserSeek } = useCutPreview({
+    videoRef,
+    plan: editPlan ?? null,
+    enabled: cutPreviewActive,
+  });
 
-        const rangeRef = useRef<{ startMs: number; endMs: number } | null>(null);
+  const assetUrl = convertFileSrc(path);
 
-        const [cutPreviewActive, setCutPreviewActive] = useState(false);
-        const [showCaptions, setShowCaptions] = useState(true);
-
-        const { handleUserSeek } = useCutPreview({
-            videoRef,
-            plan: editPlan ?? null,
-            enabled: cutPreviewActive,
-        });
-
-        useImperativeHandle(ref, () => ({
-            seekTo: (timeMs: number) => {
-                if (videoRef.current) {
-                    rangeRef.current = null;
-                    videoRef.current.currentTime = timeMs / 1000;
-                }
-            },
-            playRange: (startMs: number, endMs: number) => {
-                if (videoRef.current) {
-                    const playStartMs = Math.max(0, startMs - 1000);
-                    videoRef.current.currentTime = playStartMs / 1000;
-                    rangeRef.current = { startMs, endMs };
-                    videoRef.current.play().catch(console.error);
-                }
-            },
-        }));
-
-        const handleTimeUpdate = () => {
-            if (!videoRef.current) return;
-
-            if (rangeRef.current) {
-                const currentMs = videoRef.current.currentTime * 1000;
-                const { startMs, endMs } = rangeRef.current;
-
-                if (currentMs >= startMs && currentMs < endMs) {
-                    videoRef.current.currentTime = endMs / 1000;
-                } else if (currentMs >= endMs + 1000) {
-                    videoRef.current.pause();
-                    rangeRef.current = null;
-                }
-            }
-        };
-
-        const hasCuts =
-            editPlan !== null &&
-            editPlan !== undefined &&
-            editPlan.actions.some(a => a.enabled && a.payload.type === 'cut');
-            
-        const hasCaptions = captionCues && captionCues.length > 0;
-
-        return (
-            <div className="p-4 border rounded-lg bg-card text-card-foreground shadow-sm m-4 max-w-xl">
-                <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-lg font-bold">Video Preview</h3>
-
-                    <div className="flex items-center gap-4">
-                        {hasCaptions && (
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">Captions</span>
-                                <Switch
-                                    id="captions-toggle"
-                                    checked={showCaptions}
-                                    onCheckedChange={setShowCaptions}
-                                    aria-label="Toggle captions"
-                                />
-                            </div>
-                        )}
-                        {hasCuts && (
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">Preview Cuts</span>
-                                <Switch
-                                    id="cut-preview-toggle"
-                                    checked={cutPreviewActive}
-                                    onCheckedChange={setCutPreviewActive}
-                                    aria-label="Toggle cut-preview mode"
-                                />
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {cutPreviewActive && (
-                    <p className="text-xs text-muted-foreground mb-2 italic">
-                        Source-time preview — enabled cuts will be skipped.
-                    </p>
-                )}
-
-                <div className="relative @container w-full bg-black rounded overflow-hidden" style={{ maxHeight: '400px' }}>
-                    <video
-                        ref={videoRef}
-                        src={assetUrl}
-                        controls
-                        className="w-full h-full object-contain"
-                        style={{ maxHeight: '400px' }}
-                        onTimeUpdate={handleTimeUpdate}
-                        onSeeked={handleUserSeek}
-                    />
-                    
-                    {showCaptions && hasCaptions && (
-                        <CaptionOverlay
-                            videoRef={videoRef}
-                            cues={captionCues}
-                            styleModel={captionStyle ?? null}
-                            editPlan={editPlan}
-                        />
-                    )}
-                </div>
-            </div>
-        );
+  const applySeek = useCallback((video: HTMLVideoElement, requestedTimeMs: number) => {
+    if (!Number.isFinite(requestedTimeMs) || requestedTimeMs < 0) {
+      return { status: "rejected", timeMs: null } satisfies VideoSeekResult;
     }
-);
 
-VideoPreview.displayName = 'VideoPreview';
+    const durationMs = Number.isFinite(video.duration)
+      ? Math.max(0, Math.round(video.duration * 1000))
+      : null;
+    const targetTimeMs =
+      durationMs === null
+        ? Math.round(requestedTimeMs)
+        : Math.min(Math.round(requestedTimeMs), durationMs);
+
+    try {
+      video.currentTime = targetTimeMs / 1000;
+      return { status: "applied", timeMs: targetTimeMs } satisfies VideoSeekResult;
+    } catch {
+      return { status: "rejected", timeMs: null } satisfies VideoSeekResult;
+    }
+  }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      seek: (requestedTimeMs) => {
+        if (!Number.isFinite(requestedTimeMs) || requestedTimeMs < 0) {
+          return { status: "rejected", timeMs: null };
+        }
+
+        const video = videoRef.current;
+        if (!video || video.readyState < 1) {
+          pendingSeekMsRef.current = Math.round(requestedTimeMs);
+          return { status: "queued", timeMs: pendingSeekMsRef.current };
+        }
+
+        rangeRef.current = null;
+        return applySeek(video, requestedTimeMs);
+      },
+      seekTo: (requestedTimeMs) => {
+        void (
+          videoRef.current &&
+          (videoRef.current.readyState < 1
+            ? (pendingSeekMsRef.current = Math.max(0, Math.round(requestedTimeMs)))
+            : applySeek(videoRef.current, requestedTimeMs))
+        );
+      },
+      playRange: (startMs, endMs) => {
+        const video = videoRef.current;
+        if (!video || !Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
+        const boundedStart = Math.max(0, Math.round(startMs));
+        const boundedEnd = Math.max(boundedStart, Math.round(endMs));
+        const playStartMs = Math.max(0, boundedStart - 1000);
+        rangeRef.current = { startMs: boundedStart, endMs: boundedEnd };
+        applySeek(video, playStartMs);
+        void video.play().catch(() => undefined);
+      },
+    }),
+    [applySeek],
+  );
+
+  const handleLoadedMetadata = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = event.currentTarget;
+    const pendingSeekMs = pendingSeekMsRef.current;
+    if (pendingSeekMs !== null) {
+      pendingSeekMsRef.current = null;
+      applySeek(video, pendingSeekMs);
+    }
+
+    const currentTimeMs = Math.round(video.currentTime * 1000);
+    const durationMs = Math.round(video.duration * 1000);
+    if (Number.isFinite(currentTimeMs)) onCurrentTimeChange?.(currentTimeMs);
+    if (Number.isFinite(durationMs)) onDurationChange?.(durationMs);
+  };
+
+  const handleTimeUpdate = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = event.currentTarget;
+    const currentMs = Math.round(video.currentTime * 1000);
+    if (Number.isFinite(currentMs)) onCurrentTimeChange?.(currentMs);
+
+    const range = rangeRef.current;
+    if (!range) return;
+    if (currentMs >= range.startMs && currentMs < range.endMs) {
+      applySeek(video, range.endMs);
+    } else if (currentMs >= range.endMs + 1000) {
+      video.pause();
+      rangeRef.current = null;
+    }
+  };
+
+  const hasCuts = Boolean(
+    editPlan?.actions.some((action) => action.enabled && action.type === "cut"),
+  );
+  const hasCaptions = Boolean(captionCues && captionCues.length > 0);
+
+  return (
+    <div className="m-4 max-w-xl rounded-lg border bg-card p-4 text-card-foreground shadow-sm">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-lg font-bold">Video Preview</h3>
+        <div className="flex items-center gap-4">
+          {hasCaptions && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Captions</span>
+              <Switch
+                id="captions-toggle"
+                checked={showCaptions}
+                onCheckedChange={setShowCaptions}
+                aria-label="Toggle captions"
+              />
+            </div>
+          )}
+          {hasCuts && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Preview Cuts</span>
+              <Switch
+                id="cut-preview-toggle"
+                checked={cutPreviewActive}
+                onCheckedChange={setCutPreviewActive}
+                aria-label="Toggle cut-preview mode"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {cutPreviewActive && (
+        <p className="mb-2 text-xs italic text-muted-foreground">
+          Source-time preview — enabled cuts will be skipped.
+        </p>
+      )}
+
+      <div
+        className="@container relative w-full overflow-hidden rounded bg-black"
+        style={{ maxHeight: "400px" }}
+      >
+        <video
+          ref={videoRef}
+          src={assetUrl}
+          controls
+          className="h-full w-full object-contain"
+          style={{ maxHeight: "400px" }}
+          onLoadedMetadata={handleLoadedMetadata}
+          onTimeUpdate={handleTimeUpdate}
+          onSeeked={handleUserSeek}
+          onPlay={() => onPlaybackChange?.(true)}
+          onPause={() => onPlaybackChange?.(false)}
+          onEnded={() => onPlaybackChange?.(false)}
+        />
+        {showCaptions && hasCaptions && (
+          <CaptionOverlay
+            videoRef={videoRef}
+            cues={captionCues ?? []}
+            styleModel={captionStyle ?? null}
+            editPlan={editPlan}
+          />
+        )}
+      </div>
+    </div>
+  );
+});
+
+VideoPreview.displayName = "VideoPreview";

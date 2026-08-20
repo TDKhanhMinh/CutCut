@@ -1,8 +1,9 @@
+pub mod cache;
+pub mod diagnostics;
+pub mod fusion;
 pub mod media;
 pub mod project;
 pub mod resource;
-pub mod whisper;
-pub mod diagnostics;
-pub mod vad;
-pub mod fusion;
 pub mod suggestion;
+pub mod vad;
+pub mod whisper;

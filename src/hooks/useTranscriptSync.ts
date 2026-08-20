@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { TranscriptSegment } from '@/types/transcript';
+import { useMemo } from "react";
+import { TranscriptSegment } from "@/types/transcript";
 
 /**
  * Hook to find the active transcript segment based on current playback time.
@@ -7,34 +7,30 @@ import { TranscriptSegment } from '@/types/transcript';
  */
 export const useTranscriptSync = (
   segments: TranscriptSegment[],
-  currentTimeMs: number
+  currentTimeMs: number,
 ): string | null => {
   return useMemo(() => {
     if (!segments || segments.length === 0) return null;
+    if (!Number.isFinite(currentTimeMs)) return null;
 
-    let left = 0;
-    let right = segments.length - 1;
-
-    // Fast bounds checking
-    if (currentTimeMs < segments[0].startMs) return null;
-    if (currentTimeMs > segments[segments.length - 1].endMs) return null;
-
-    while (left <= right) {
-      const mid = Math.floor((left + right) / 2);
-      const segment = segments[mid];
-
-      if (currentTimeMs >= segment.startMs && currentTimeMs <= segment.endMs) {
-        return segment.id;
-      }
-
-      if (currentTimeMs < segment.startMs) {
-        right = mid - 1;
+    // Find the last segment whose start is at or before playback time. This
+    // makes an exact boundary belong to the newer segment and leaves gaps
+    // inactive instead of incorrectly highlighting the previous segment.
+    let low = 0;
+    let high = segments.length;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (segments[mid].startMs <= currentTimeMs) {
+        low = mid + 1;
       } else {
-        left = mid + 1;
+        high = mid;
       }
     }
 
-    // If time falls in a gap between segments, we return null so no segment is active.
+    const candidate = segments[low - 1];
+    if (candidate && currentTimeMs <= candidate.endMs) return candidate.id;
+
+    // If time falls in a gap or outside the transcript, no segment is active.
     return null;
   }, [segments, currentTimeMs]);
 };

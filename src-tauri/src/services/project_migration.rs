@@ -31,7 +31,7 @@ pub fn load_project_from_json(json_str: &str) -> Result<Project, MigrationError>
 
     // Now it should match CURRENT_SCHEMA_VERSION
     let project: Project = serde_json::from_value(raw_val)?;
-    
+
     Ok(project)
 }
 
@@ -43,7 +43,10 @@ mod tests {
     fn test_rejects_newer_version() {
         let json = r#"{ "schemaVersion": 999, "id": "123" }"#;
         let result = load_project_from_json(json);
-        assert!(matches!(result, Err(MigrationError::UnsupportedNewerVersion(999))));
+        assert!(matches!(
+            result,
+            Err(MigrationError::UnsupportedNewerVersion(999))
+        ));
     }
 
     #[test]
@@ -58,9 +61,19 @@ mod tests {
         // We will create a minimal V1 schema
         let project = Project::default();
         let json = serde_json::to_string(&project).unwrap();
-        
+
         let loaded = load_project_from_json(&json).unwrap();
         assert_eq!(loaded.id, project.id);
         assert_eq!(loaded.schema_version, 1);
+    }
+
+    #[test]
+    fn legacy_project_without_artifact_registry_loads_with_empty_registry() {
+        let project = Project::default();
+        let mut value = serde_json::to_value(&project).unwrap();
+        value.as_object_mut().unwrap().remove("artifacts");
+
+        let loaded = load_project_from_json(&serde_json::to_string(&value).unwrap()).unwrap();
+        assert!(loaded.artifacts.is_empty());
     }
 }
