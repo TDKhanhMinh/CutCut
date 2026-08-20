@@ -11,6 +11,7 @@ interface TranscriptPanelProps {
   modifiedSegmentIds?: string[];
   onSegmentClick?: (id: string) => void;
   onSegmentEdit?: (id: string, newText: string) => void;
+  onSegmentRevert?: (id: string) => void;
   autoScroll?: boolean;
 }
 
@@ -22,6 +23,7 @@ export const TranscriptPanel = ({
   modifiedSegmentIds = [],
   onSegmentClick,
   onSegmentEdit,
+  onSegmentRevert,
   autoScroll = true,
 }: TranscriptPanelProps) => {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -124,6 +126,7 @@ export const TranscriptPanel = ({
                   isModified={modifiedSegmentIds.includes(segment.id)}
                   onClick={handleSegmentClick}
                   onEdit={onSegmentEdit}
+                  onRevert={onSegmentRevert}
                 />
               </div>
             );

@@ -18,6 +18,9 @@ pub struct MediaJobEvent {
     pub progress: Option<f64>, // 0.0 to 1.0
     pub message: Option<String>,
     pub error: Option<String>,
+    /// Optional typed operation result. `message` stays reserved for a short
+    /// human-readable status/diagnostic string.
+    pub result: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Default)]
@@ -26,4 +29,21 @@ pub struct FfmpegProgress {
     pub fps: Option<f64>,
     pub out_time_us: Option<u64>,
     pub speed: Option<f64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MediaJobState;
+
+    #[test]
+    fn serializes_event_states_in_frontend_contract_case() {
+        assert_eq!(
+            serde_json::to_string(&MediaJobState::Completed).unwrap(),
+            "\"completed\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MediaJobState::Cancelled).unwrap(),
+            "\"cancelled\""
+        );
+    }
 }

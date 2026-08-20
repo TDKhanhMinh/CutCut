@@ -47,7 +47,13 @@ export function Home() {
         />
       )}
 
-      {sourceData && isMissing && <MediaRelink mediaId={sourceData.id} oldPath={sourceData.path} />}
+      {sourceData && isMissing && (
+        <MediaRelink
+          mediaId={sourceData.id}
+          oldPath={sourceData.path}
+          oldMetadata={sourceData.metadata}
+        />
+      )}
 
       {sourceData && !isMissing && (
         <div className="mt-4 flex flex-col items-start gap-4 xl:flex-row">

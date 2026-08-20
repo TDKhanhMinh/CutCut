@@ -15,6 +15,9 @@ pub enum MediaEngineError {
     #[error("Process exited with code {code}: {stderr}")]
     ProcessFailed { code: i32, stderr: String },
 
+    #[error("Process cancelled by user")]
+    Cancelled,
+
     #[error("Failed to spawn process: {message}")]
     SpawnFailed { message: String },
 

@@ -1,4 +1,4 @@
-use crate::models::project::Project;
+use crate::models::project::{Project, Transcript};
 use crate::services::project_migration::{load_project_from_json, MigrationError};
 use std::fs;
 use std::path::Path;
@@ -20,6 +20,10 @@ pub enum RepositoryError {
     InvalidPath,
     #[error("Project recovery failed. Primary error: {primary}; backup error: {backup}")]
     RecoveryFailed { primary: String, backup: String },
+    #[error("Project already contains a transcript; explicit replace confirmation is required")]
+    TranscriptReplaceRequiresConfirmation,
+    #[error("Existing transcript or edit plan has manual changes; explicit force replacement is required")]
+    TranscriptManualChangesRequireForce,
 }
 
 /// Save a project atomically to the given path.
@@ -77,6 +81,55 @@ pub fn load_project<P: AsRef<Path>>(path: P) -> Result<Project, RepositoryError>
     }
 }
 
+/// Persist a parsed transcript while making re-transcription destructive only
+/// after explicit confirmation. Manual transcript edits and dependent edit
+/// actions require a second force flag so they cannot be silently discarded.
+pub fn persist_transcript<P: AsRef<Path>>(
+    path: P,
+    transcript: Transcript,
+    replace_existing: bool,
+    force_replace_modified: bool,
+) -> Result<Project, RepositoryError> {
+    let path = path.as_ref();
+    let mut project = load_project(path)?;
+    if project.transcript.is_some() {
+        if !replace_existing {
+            return Err(RepositoryError::TranscriptReplaceRequiresConfirmation);
+        }
+        let has_manual_transcript_edits = project
+            .transcript
+            .as_ref()
+            .is_some_and(transcript_has_manual_edits);
+        if (has_manual_transcript_edits || !project.edit_plan.actions.is_empty())
+            && !force_replace_modified
+        {
+            return Err(RepositoryError::TranscriptManualChangesRequireForce);
+        }
+    }
+
+    project.transcript = Some(transcript);
+    project.updated_at = now_millis();
+    save_project(path, &project)?;
+    Ok(project)
+}
+
+fn transcript_has_manual_edits(transcript: &Transcript) -> bool {
+    transcript.segments.iter().any(|segment| {
+        segment.is_modified
+            || segment
+                .original_text
+                .as_ref()
+                .is_some_and(|original| original != &segment.text)
+    })
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
 fn load_project_file(path: &Path) -> Result<Project, RepositoryError> {
     let content = fs::read_to_string(path)?;
     Ok(load_project_from_json(&content)?)
@@ -94,8 +147,8 @@ fn backup_path(path: &Path) -> std::path::PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{backup_path, load_project, save_project};
-    use crate::models::project::Project;
+    use super::{backup_path, load_project, persist_transcript, save_project, RepositoryError};
+    use crate::models::project::{Project, Transcript, TranscriptSegment};
     use std::fs;
 
     #[test]
@@ -130,5 +183,63 @@ mod tests {
         save_project(&path, &recovered).unwrap();
         let backup = load_project(backup_path(&path)).unwrap();
         assert_eq!(backup.id, first.id);
+    }
+
+    fn transcript(text: &str, is_modified: bool) -> Transcript {
+        Transcript {
+            id: "transcript-1".to_string(),
+            source_id: "source-1".to_string(),
+            model_id: "ggml-tiny".to_string(),
+            language: "vi".to_string(),
+            generated_at: 1,
+            segments: vec![TranscriptSegment {
+                id: "segment-1".to_string(),
+                text: text.to_string(),
+                original_text: if is_modified {
+                    Some("original".to_string())
+                } else {
+                    None
+                },
+                start_ms: 0,
+                end_ms: 1_000,
+                speaker: None,
+                is_filler: false,
+                is_modified,
+            }],
+        }
+    }
+
+    #[test]
+    fn persists_initial_transcript_and_round_trips() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("project.cutcut");
+        save_project(&path, &Project::default()).unwrap();
+
+        let persisted = persist_transcript(&path, transcript("Xin chào", false), false, false)
+            .expect("persist initial transcript");
+        assert_eq!(persisted.transcript.unwrap().segments[0].text, "Xin chào");
+        assert!(load_project(&path).unwrap().transcript.is_some());
+    }
+
+    #[test]
+    fn replacement_requires_confirmation_and_protects_manual_edits() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("project.cutcut");
+        let project = Project {
+            transcript: Some(transcript("edited", true)),
+            ..Project::default()
+        };
+        save_project(&path, &project).unwrap();
+
+        assert!(matches!(
+            persist_transcript(&path, transcript("new", false), false, false),
+            Err(RepositoryError::TranscriptReplaceRequiresConfirmation)
+        ));
+        assert!(matches!(
+            persist_transcript(&path, transcript("new", false), true, false),
+            Err(RepositoryError::TranscriptManualChangesRequireForce)
+        ));
+        let replaced = persist_transcript(&path, transcript("new", false), true, true).unwrap();
+        assert_eq!(replaced.transcript.unwrap().segments[0].text, "new");
     }
 }

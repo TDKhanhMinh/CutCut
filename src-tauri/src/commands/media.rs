@@ -109,7 +109,7 @@ pub async fn check_media_exists(path: String) -> Result<bool, String> {
 pub async fn extract_audio_for_stt(
     app: AppHandle,
     source_path: String,
-    job_id: String,
+    job_id: Option<String>,
     duration_us: Option<u64>,
 ) -> Result<String, String> {
     crate::services::audio_extraction_service::AudioExtractionService::extract_audio_for_stt(

@@ -1,3 +1,4 @@
+pub mod cache;
 pub mod diagnostics;
 pub mod media;
 pub mod project;

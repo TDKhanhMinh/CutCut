@@ -3,6 +3,11 @@ import { checkMediaExists } from "@/services/media";
 import { saveProjectToDisk } from "@/services/project";
 import type { MediaSourceMetadata } from "@/types/media";
 import type { Project } from "../types/project";
+import {
+  applyTranscriptTextEdit,
+  markTranscriptDependentArtifactsStale,
+  revertTranscriptTextEdit,
+} from "@/lib/transcript-edit";
 
 interface ProjectState {
   activeProject: Project | null;
@@ -15,6 +20,8 @@ interface ProjectState {
 
   setProject: (project: Project, path: string | null) => void;
   updateProject: (updater: (draft: Project) => void) => void;
+  updateTranscriptSegmentText: (segmentId: string, text: string) => void;
+  revertTranscriptSegmentText: (segmentId: string) => void;
   saveProject: () => Promise<void>;
   saveProjectAs: (path: string) => Promise<void>;
   setSaveState: (state: "idle" | "saving" | "saved" | "error") => void;
@@ -59,6 +66,59 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         revision: state.revision + 1,
         saveState: "idle",
       };
+    });
+  },
+
+  updateTranscriptSegmentText: (segmentId, text) => {
+    const currentProject = get().activeProject;
+    const currentSegment = currentProject?.transcript?.segments.find(
+      (segment) => segment.id === segmentId,
+    );
+    if (!currentSegment || !applyTranscriptTextEdit(currentSegment, text).changed) return;
+
+    get().updateProject((draft) => {
+      if (!draft.transcript) return;
+
+      const index = draft.transcript.segments.findIndex((segment) => segment.id === segmentId);
+      if (index === -1) return;
+
+      const result = applyTranscriptTextEdit(draft.transcript.segments[index], text);
+      if (!result.changed) return;
+
+      draft.transcript = {
+        ...draft.transcript,
+        segments: draft.transcript.segments.map((segment, segmentIndex) =>
+          segmentIndex === index ? result.segment : segment,
+        ),
+      };
+      draft.artifacts = markTranscriptDependentArtifactsStale(draft.artifacts);
+      draft.updatedAt = Date.now();
+    });
+  },
+
+  revertTranscriptSegmentText: (segmentId) => {
+    const currentSegment = get().activeProject?.transcript?.segments.find(
+      (segment) => segment.id === segmentId,
+    );
+    if (!currentSegment || currentSegment.originalText === undefined) return;
+
+    get().updateProject((draft) => {
+      if (!draft.transcript) return;
+
+      const index = draft.transcript.segments.findIndex((segment) => segment.id === segmentId);
+      if (index === -1) return;
+
+      const segment = draft.transcript.segments[index];
+      const reverted = revertTranscriptTextEdit(segment);
+      if (reverted === segment) return;
+
+      draft.transcript = {
+        ...draft.transcript,
+        segments: draft.transcript.segments.map((candidate, segmentIndex) =>
+          segmentIndex === index ? reverted : candidate,
+        ),
+      };
+      draft.updatedAt = Date.now();
     });
   },
 

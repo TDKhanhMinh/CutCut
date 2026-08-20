@@ -2,12 +2,38 @@ import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { AlertTriangle } from "lucide-react";
 import { useProjectStore } from "../../stores/useProjectStore";
-import { readMediaMetadata } from "@/services/media";
+import {
+  compareMediaMetadata,
+  readMediaMetadata,
+  type MediaCompatibilityResult,
+} from "@/services/media";
+import type { MediaSourceMetadata } from "@/types/media";
 
-export function MediaRelink({ mediaId, oldPath }: { mediaId: string; oldPath: string }) {
+interface PendingRelink {
+  path: string;
+  metadata: MediaSourceMetadata;
+}
+
+interface MediaRelinkProps {
+  mediaId: string;
+  oldPath: string;
+  oldMetadata: MediaSourceMetadata;
+}
+
+export function MediaRelink({ mediaId, oldPath, oldMetadata }: MediaRelinkProps) {
   const relinkMedia = useProjectStore((state) => state.relinkMedia);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [compatibility, setCompatibility] = useState<MediaCompatibilityResult | null>(null);
+  const [pendingRelink, setPendingRelink] = useState<PendingRelink | null>(null);
+
+  const confirmRelink = () => {
+    if (!pendingRelink) return;
+
+    relinkMedia(mediaId, pendingRelink.path, pendingRelink.metadata);
+    setPendingRelink(null);
+    setCompatibility(null);
+  };
 
   const handleRelink = async () => {
     try {
@@ -32,6 +58,13 @@ export function MediaRelink({ mediaId, oldPath }: { mediaId: string; oldPath: st
 
       // Fetch new metadata
       const newMetadata = await readMediaMetadata(filePath);
+      const result = compareMediaMetadata(oldMetadata, newMetadata);
+
+      if (result.requiresConfirmation) {
+        setCompatibility(result);
+        setPendingRelink({ path: filePath, metadata: newMetadata });
+        return;
+      }
 
       // Relink the media in store
       relinkMedia(mediaId, filePath, newMetadata);
@@ -41,6 +74,11 @@ export function MediaRelink({ mediaId, oldPath }: { mediaId: string; oldPath: st
     } finally {
       setLoading(false);
     }
+  };
+
+  const discardPendingRelink = () => {
+    setPendingRelink(null);
+    setCompatibility(null);
   };
 
   return (
@@ -70,12 +108,48 @@ export function MediaRelink({ mediaId, oldPath }: { mediaId: string; oldPath: st
         </div>
       )}
 
+      {compatibility && pendingRelink && (
+        <div
+          className="mb-4 w-full rounded border border-yellow-500/40 bg-yellow-500/10 p-3 text-left text-sm"
+          role="alert"
+        >
+          <p className="mb-2 font-semibold text-yellow-700 dark:text-yellow-300">
+            Media thay thế không hoàn toàn tương thích
+          </p>
+          <ul className="mb-3 list-inside list-disc space-y-1 text-muted-foreground">
+            {compatibility.warnings.map((warning) => (
+              <li key={warning.code}>{warning.message}</li>
+            ))}
+          </ul>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Transcript và Edit Plan vẫn giữ timestamp của source cũ. Chỉ tiếp tục nếu bạn xác nhận
+            timeline có thể thay đổi.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="rounded-md bg-yellow-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-yellow-700"
+              onClick={confirmRelink}
+              type="button"
+            >
+              Relink với cảnh báo
+            </button>
+            <button
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+              onClick={discardPendingRelink}
+              type="button"
+            >
+              Chọn file khác
+            </button>
+          </div>
+        </div>
+      )}
+
       <button
         className="rounded-md bg-primary px-6 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         onClick={handleRelink}
         disabled={loading}
       >
-        {loading ? "Relinking..." : "Relink File"}
+        {loading ? "Relinking..." : pendingRelink ? "Chọn file khác" : "Relink File"}
       </button>
     </div>
   );

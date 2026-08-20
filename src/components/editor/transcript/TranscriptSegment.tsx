@@ -1,6 +1,7 @@
 import { memo, useState, useRef, useEffect, KeyboardEvent } from "react";
 import { TranscriptSegment as ITranscriptSegment } from "@/types/transcript";
 import { cn } from "@/lib/utils";
+import { normalizeTranscriptText } from "@/lib/transcript-edit";
 
 interface TranscriptSegmentProps {
   segment: ITranscriptSegment;
@@ -10,6 +11,7 @@ interface TranscriptSegmentProps {
   isModified?: boolean;
   onClick?: (id: string) => void;
   onEdit?: (id: string, newText: string) => void;
+  onRevert?: (id: string) => void;
 }
 
 const formatTimestamp = (ms: number) => {
@@ -28,10 +30,13 @@ export const TranscriptSegment = memo(
     isModified,
     onClick,
     onEdit,
+    onRevert,
   }: TranscriptSegmentProps) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(segment.text);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const editingRef = useRef(false);
 
     useEffect(() => {
       if (isEditing && inputRef.current) {
@@ -49,16 +54,51 @@ export const TranscriptSegment = memo(
       }
     }, [segment.text, isEditing]);
 
+    useEffect(() => {
+      return () => {
+        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+      };
+    }, []);
+
+    const startEditing = () => {
+      if (isCut || editingRef.current) return;
+      editingRef.current = true;
+      setEditValue(segment.text);
+      setIsEditing(true);
+    };
+
     const handleSave = () => {
-      if (editValue.trim() !== segment.text) {
-        onEdit?.(segment.id, editValue.trim());
+      if (!editingRef.current) return;
+      editingRef.current = false;
+      const normalizedText = normalizeTranscriptText(editValue);
+      if (normalizedText && normalizedText !== segment.text) {
+        onEdit?.(segment.id, normalizedText);
       }
       setIsEditing(false);
     };
 
     const handleCancel = () => {
+      if (!editingRef.current) return;
+      editingRef.current = false;
       setEditValue(segment.text);
       setIsEditing(false);
+    };
+
+    const handleClick = () => {
+      if (isEditing) return;
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = setTimeout(() => {
+        clickTimerRef.current = null;
+        onClick?.(segment.id);
+      }, 220);
+    };
+
+    const handleDoubleClick = () => {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+      startEditing();
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -81,17 +121,19 @@ export const TranscriptSegment = memo(
         )}
         tabIndex={0}
         onKeyDown={(e) => {
+          if (
+            e.target instanceof HTMLElement &&
+            ["BUTTON", "INPUT", "TEXTAREA"].includes(e.target.tagName)
+          ) {
+            return;
+          }
           if (!isEditing && (e.key === "Enter" || e.key === " ")) {
             e.preventDefault();
             onClick?.(segment.id);
           }
         }}
-        onClick={() => {
-          if (!isEditing) onClick?.(segment.id);
-        }}
-        onDoubleClick={() => {
-          if (!isCut) setIsEditing(true);
-        }}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
       >
         <div className="mt-1 w-12 shrink-0 select-none font-mono text-xs text-muted-foreground transition-colors group-hover:text-foreground">
           {formatTimestamp(segment.startMs)}
@@ -108,16 +150,32 @@ export const TranscriptSegment = memo(
               rows={Math.max(1, Math.ceil(editValue.length / 50))}
             />
           ) : (
-            <span
-              className={cn(
-                "block leading-relaxed",
-                (isModified || segment.isModified) && "font-medium text-amber-500",
-                !isCut && "group-hover:opacity-90",
+            <div className="flex items-start gap-2">
+              <span
+                className={cn(
+                  "block flex-1 leading-relaxed",
+                  (isModified || segment.isModified) && "font-medium text-amber-500",
+                  !isCut && "group-hover:opacity-90",
+                )}
+                title="Double click to edit"
+              >
+                {segment.text}
+              </span>
+              {segment.isModified && onRevert && (
+                <button
+                  type="button"
+                  className="shrink-0 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  aria-label={`Revert transcript segment ${segment.id}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRevert(segment.id);
+                  }}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                >
+                  Revert
+                </button>
               )}
-              title="Double click to edit"
-            >
-              {segment.text}
-            </span>
+            </div>
           )}
         </div>
       </div>
@@ -129,9 +187,12 @@ export const TranscriptSegment = memo(
       prevProps.isSelected === nextProps.isSelected &&
       prevProps.isCut === nextProps.isCut &&
       prevProps.isModified === nextProps.isModified &&
+      prevProps.onEdit === nextProps.onEdit &&
+      prevProps.onRevert === nextProps.onRevert &&
       prevProps.segment.id === nextProps.segment.id &&
       prevProps.segment.text === nextProps.segment.text &&
-      prevProps.segment.isModified === nextProps.segment.isModified
+      prevProps.segment.isModified === nextProps.segment.isModified &&
+      prevProps.segment.originalText === nextProps.segment.originalText
     );
   },
 );

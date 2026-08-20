@@ -1,5 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WhisperRuntimeInfo {
+    pub available: bool,
+    pub version: String,
+    pub backend: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WhisperTimestamp {
     pub from: String,

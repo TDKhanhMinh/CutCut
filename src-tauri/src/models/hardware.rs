@@ -10,6 +10,10 @@ pub struct RuntimeProfile {
     pub has_avx512: bool,
     pub has_gpu: bool,
     pub gpu_names: Vec<String>,
-    pub supported_acceleration: String, // "CUDA", "CPU_AVX2", "CPU_BASIC"
+    pub supported_acceleration: String, // "CPU_AVX2" or "CPU_BASIC" for the V1 CPU bundle
+    pub runtime_available: bool,
+    pub runtime_version: Option<String>,
+    pub runtime_backends: Vec<String>,
+    pub recommended_model_ids: Vec<String>,
     pub fallback_reason: Option<String>,
 }

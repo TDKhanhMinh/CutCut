@@ -19,6 +19,7 @@ pub struct Project {
     pub edit_plan: EditPlan,
     pub captions: Option<CaptionSettings>,
     pub settings: OutputSettings,
+    #[serde(default)]
     pub artifacts: Vec<ArtifactRecord>,
 }
 
