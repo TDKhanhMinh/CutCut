@@ -45,12 +45,7 @@ fn parse_progress_line(line: &str, total_duration_us: Option<u64>) -> Option<f64
             if let Ok(time_us) = value_str.trim().parse::<u64>() {
                 if let Some(total) = total_duration_us {
                     if total > 0 {
-                        let mut progress = time_us as f64 / total as f64;
-                        if progress > 1.0 {
-                            progress = 1.0;
-                        } else if progress < 0.0 {
-                            progress = 0.0;
-                        }
+                        let progress = (time_us as f64 / total as f64).clamp(0.0, 1.0);
                         return Some(progress);
                     }
                 }
@@ -106,7 +101,7 @@ pub async fn spawn_ffmpeg_job(
     // Read events in a background task
     let app_clone = app.clone();
     let job_id_clone = job_id.clone();
-    
+
     tokio::spawn(async move {
         let mut last_progress = 0.0;
 

@@ -28,7 +28,7 @@ dist-ssr
 .ai
 
 # Media / Secrets
-models/
+/models/
 
 # FFmpeg/FFprobe sidecar binaries (too large for git, see src-tauri/binaries/README.md)
 src-tauri/ffmpeg-*.exe
