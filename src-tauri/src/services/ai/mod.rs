@@ -1,8 +1,8 @@
-pub mod supabase;
 pub mod mock;
+pub mod supabase;
 
-use async_trait::async_trait;
 use crate::models::ai::{AIAnalysisRequest, AIAnalysisResponse, AIProviderError};
+use async_trait::async_trait;
 
 #[async_trait]
 pub trait AIProvider: Send + Sync {

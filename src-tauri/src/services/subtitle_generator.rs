@@ -1,5 +1,5 @@
+use crate::models::edit_plan::{EditActionType, EditPlan};
 use crate::models::project::{CaptionCue, CaptionStyle};
-use crate::models::edit_plan::EditPlan;
 use std::path::PathBuf;
 
 #[derive(Debug, PartialEq)]
@@ -13,24 +13,17 @@ pub struct SubtitleGenerator;
 
 impl SubtitleGenerator {
     /// Maps source-time cues to output-time cues by skipping over enabled cuts.
-    pub fn map_to_output_timeline(
-        cues: &[CaptionCue],
-        edit_plan: &EditPlan,
-    ) -> Vec<OutputCue> {
+    pub fn map_to_output_timeline(cues: &[CaptionCue], edit_plan: &EditPlan) -> Vec<OutputCue> {
         // 1. Extract and sort enabled cuts
         let mut cuts: Vec<(u64, u64)> = edit_plan
             .actions
             .iter()
             .filter_map(|a| {
-                if a.enabled {
-                    if let crate::models::edit_plan::ActionPayload::Cut { start_ms, end_ms } = a.payload {
-                        return Some((start_ms, end_ms));
-                    }
-                }
-                None
+                (a.enabled && a.action_type == EditActionType::Cut)
+                    .then_some((a.start_ms, a.end_ms))
             })
             .collect();
-            
+
         // Note: The EditPlan validator should have already sorted and merged these,
         // but we sort again just in case to guarantee correctness.
         cuts.sort_by_key(|c| c.0);
@@ -46,11 +39,11 @@ impl SubtitleGenerator {
                 if current_start >= cue_end {
                     break;
                 }
-                
+
                 if cut_end <= current_start {
                     continue; // Cut is completely before this remaining cue part
                 }
-                
+
                 if cut_start >= cue_end {
                     break; // All subsequent cuts are after this cue
                 }
@@ -65,7 +58,7 @@ impl SubtitleGenerator {
                         text: cue.text.clone(),
                     });
                 }
-                
+
                 // Advance the current_start to the end of the cut
                 current_start = current_start.max(cut_end);
             }
@@ -135,9 +128,9 @@ impl SubtitleGenerator {
         // Simplified mapping based on bottom alignment since style_mapper positions from top
         // But ASS uses MarginV.
         match style.alignment.as_str() {
-            "left" => 1, // Bottom-left
+            "left" => 1,  // Bottom-left
             "right" => 3, // Bottom-right
-            _ => 2, // Bottom-center
+            _ => 2,       // Bottom-center
         }
     }
 
@@ -154,7 +147,7 @@ impl SubtitleGenerator {
         // Map styles
         let font_size = (style.font_size_vh * video_height as f64).round() as u32;
         let primary_color = Self::hex_to_ass_color(&style.primary_color, "00"); // Solid
-        
+
         let outline_color = if let Some(ref c) = style.outline_color {
             Self::hex_to_ass_color(c, "00")
         } else {
@@ -176,15 +169,19 @@ impl SubtitleGenerator {
             "&H80000000".to_string() // 50% black
         };
 
-        let border_style = if style.background_color.is_some() { 3 } else { 1 }; // 1=Outline, 3=Opaque box
-        
+        let border_style = if style.background_color.is_some() {
+            3
+        } else {
+            1
+        }; // 1=Outline, 3=Opaque box
+
         // Convert positions from Top-Left origin (Project schema) to Bottom-Up MarginV (ASS schema)
         let margin_v = ((1.0 - style.position_y_vh) * video_height as f64).round() as u32;
-        
+
         let alignment = Self::map_alignment(style);
 
         let mut lines = Vec::new();
-        
+
         // Header
         lines.push("[Script Info]".to_string());
         lines.push("ScriptType: v4.00+".to_string());
@@ -196,24 +193,37 @@ impl SubtitleGenerator {
         // Styles
         lines.push("[V4+ Styles]".to_string());
         lines.push("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding".to_string());
-        
+
         let bold = if style.font_weight >= 600 { -1 } else { 0 };
         let italic = if style.font_style == "italic" { -1 } else { 0 };
-        
+
         lines.push(format!(
             "Style: Default,{},{},{},&H000000FF,{},{},{},{},0,0,100,100,0,0,{},{},0,{},10,10,{},1",
-            style.font_family, font_size, primary_color, outline_color, back_color, bold, italic, border_style, outline_width, alignment, margin_v
+            style.font_family,
+            font_size,
+            primary_color,
+            outline_color,
+            back_color,
+            bold,
+            italic,
+            border_style,
+            outline_width,
+            alignment,
+            margin_v
         ));
         lines.push("".to_string());
 
         // Events
         lines.push("[Events]".to_string());
-        lines.push("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text".to_string());
+        lines.push(
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
+                .to_string(),
+        );
 
         for cue in output_cues {
             // Replace \n with ASS newline \N
             let safe_text = cue.text.replace("\n", "\\N");
-            
+
             lines.push(format!(
                 "Dialogue: 0,{},{},Default,,0,0,0,,{}",
                 Self::format_ass_time(cue.start_ms),
@@ -230,10 +240,10 @@ impl SubtitleGenerator {
         let temp_dir = std::env::temp_dir();
         let file_name = format!("cutcut_subs_{}.ass", uuid::Uuid::new_v4());
         let file_path = temp_dir.join(file_name);
-        
+
         std::fs::write(&file_path, content)
             .map_err(|e| format!("Failed to write temp subtitle file: {}", e))?;
-            
+
         Ok(file_path)
     }
 }
@@ -241,22 +251,22 @@ impl SubtitleGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::edit_plan::{EditAction, ActionPayload, ActionSource};
+    use crate::models::edit_plan::{EditAction, EditActionSource, EditActionType};
 
     fn make_cut(start: u64, end: u64) -> EditAction {
         EditAction {
             id: format!("cut_{}_{}", start, end),
             source_media_id: "media_1".to_string(),
-            source: ActionSource::AiAgent,
+            action_type: EditActionType::Cut,
+            start_ms: start,
+            end_ms: end,
+            source: EditActionSource::Ai,
             reason: "test".to_string(),
             confidence: None,
             enabled: true,
             created_at: 0,
             updated_at: 0,
-            payload: ActionPayload::Cut {
-                start_ms: start,
-                end_ms: end,
-            },
+            payload: None,
         }
     }
 
@@ -274,8 +284,11 @@ mod tests {
     #[test]
     fn test_map_output_no_cuts() {
         let cues = vec![make_cue(1000, 3000)];
-        let plan = EditPlan { version: 1, actions: vec![], generation_metadata: None };
-        
+        let plan = EditPlan {
+            schema_version: 1,
+            actions: vec![],
+        };
+
         let out = SubtitleGenerator::map_to_output_timeline(&cues, &plan);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].start_ms, 1000);
@@ -286,8 +299,11 @@ mod tests {
     fn test_map_output_cue_fully_inside_cut() {
         let cues = vec![make_cue(1000, 3000)];
         // Cut covers the entire cue
-        let plan = EditPlan { version: 1, actions: vec![make_cut(500, 4000)], generation_metadata: None };
-        
+        let plan = EditPlan {
+            schema_version: 1,
+            actions: vec![make_cut(500, 4000)],
+        };
+
         let out = SubtitleGenerator::map_to_output_timeline(&cues, &plan);
         assert_eq!(out.len(), 0); // Cue is dropped!
     }
@@ -296,40 +312,48 @@ mod tests {
     fn test_map_output_cue_split_by_cut() {
         let cues = vec![make_cue(1000, 5000)];
         // Cut right in the middle
-        let plan = EditPlan { version: 1, actions: vec![make_cut(2000, 3000)], generation_metadata: None };
-        
+        let plan = EditPlan {
+            schema_version: 1,
+            actions: vec![make_cut(2000, 3000)],
+        };
+
         let out = SubtitleGenerator::map_to_output_timeline(&cues, &plan);
         assert_eq!(out.len(), 2);
-        
+
         // First part: 1000 to 2000 (no cuts before it)
         assert_eq!(out[0].start_ms, 1000);
         assert_eq!(out[0].end_ms, 2000);
-        
+
         // Second part: 3000 to 5000 (shifted left by 1000ms duration of the cut)
         assert_eq!(out[1].start_ms, 2000); // 3000 - 1000
-        assert_eq!(out[1].end_ms, 4000);   // 5000 - 1000
+        assert_eq!(out[1].end_ms, 4000); // 5000 - 1000
     }
 
     #[test]
     fn test_map_output_cue_after_multiple_cuts() {
         let cues = vec![make_cue(10000, 12000)];
-        let plan = EditPlan { 
-            version: 1, 
+        let plan = EditPlan {
+            schema_version: 1,
             actions: vec![make_cut(1000, 2000), make_cut(5000, 7000)], // Total cuts = 3000ms
-            generation_metadata: None 
         };
-        
+
         let out = SubtitleGenerator::map_to_output_timeline(&cues, &plan);
         assert_eq!(out.len(), 1);
-        
+
         assert_eq!(out[0].start_ms, 7000); // 10000 - 3000
-        assert_eq!(out[0].end_ms, 9000);   // 12000 - 3000
+        assert_eq!(out[0].end_ms, 9000); // 12000 - 3000
     }
 
     #[test]
     fn test_hex_to_ass_color() {
-        assert_eq!(SubtitleGenerator::hex_to_ass_color("#FF0000", "00"), "&H000000FF");
-        assert_eq!(SubtitleGenerator::hex_to_ass_color("#00FF00", "00"), "&H0000FF00");
+        assert_eq!(
+            SubtitleGenerator::hex_to_ass_color("#FF0000", "00"),
+            "&H000000FF"
+        );
+        assert_eq!(
+            SubtitleGenerator::hex_to_ass_color("#00FF00", "00"),
+            "&H0000FF00"
+        );
     }
 
     #[test]

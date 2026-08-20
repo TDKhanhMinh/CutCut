@@ -1,12 +1,18 @@
-use async_trait::async_trait;
-use crate::models::ai::{AIAnalysisRequest, AIAnalysisResponse, AIEditAction, AIProviderError};
 use super::AIProvider;
+use crate::models::ai::{AIAnalysisRequest, AIAnalysisResponse, AIEditAction, AIProviderError};
+use async_trait::async_trait;
 
 pub struct MockAIProvider;
 
 impl MockAIProvider {
     pub fn new() -> Self {
         Self {}
+    }
+}
+
+impl Default for MockAIProvider {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

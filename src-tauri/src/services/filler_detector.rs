@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
+use crate::models::edit_plan::{EditAction, EditActionSource, EditActionType};
 use crate::models::project::TranscriptSegment;
-use crate::models::edit_plan::{EditAction, ActionPayload, ActionSource};
+use serde::{Deserialize, Serialize};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Filler Dictionary (V1 — Vietnamese)
@@ -27,26 +27,29 @@ impl Default for FillerDictionary {
     fn default() -> Self {
         let raw: &[(&str, &str)] = &[
             // Vietnamese filler syllables ─────────────────────────────────────
-            ("ờ",   "ờ"),
-            ("ừ",   "ừ"),
-            ("ừm",  "ừm"),
-            ("à",   "à"),
-            ("ơ",   "ơ"),
-            ("ơm",  "ơm"),
-            ("uh",  "uh"),
-            ("um",  "um"),
+            ("ờ", "ờ"),
+            ("ừ", "ừ"),
+            ("ừm", "ừm"),
+            ("à", "à"),
+            ("ơ", "ơ"),
+            ("ơm", "ơm"),
+            ("uh", "uh"),
+            ("um", "um"),
             ("uhm", "uhm"),
-            ("ờm",  "ờm"),
-            ("ầm",  "ầm"),
-            ("này", "này"),  // discourse-level — conservative
+            ("ờm", "ờm"),
+            ("ầm", "ầm"),
+            ("này", "này"), // discourse-level — conservative
         ];
 
         Self {
             version: "1.0".to_string(),
-            entries: raw.iter().map(|(t, l)| FillerEntry {
-                token: normalize(t),
-                label: l.to_string(),
-            }).collect(),
+            entries: raw
+                .iter()
+                .map(|(t, l)| FillerEntry {
+                    token: normalize(t),
+                    label: l.to_string(),
+                })
+                .collect(),
         }
     }
 }
@@ -91,7 +94,7 @@ impl FillerCandidate {
         created_at: u64,
         padding_ms: u64,
         media_duration_ms: u64,
-    ) -> EditAction {
+    ) -> Option<EditAction> {
         // Apply pre/post padding clamped to [0, media_duration].
         let padded_start = self.start_ms.saturating_sub(padding_ms);
         let padded_end = (self.end_ms + padding_ms).min(media_duration_ms);
@@ -100,26 +103,36 @@ impl FillerCandidate {
         let (start_ms, end_ms) = if padded_start < padded_end {
             (padded_start, padded_end)
         } else {
-            (self.start_ms, self.end_ms)
+            (
+                self.start_ms.min(media_duration_ms),
+                self.end_ms.min(media_duration_ms),
+            )
         };
+
+        if start_ms >= end_ms {
+            return None;
+        }
 
         let confidence = match self.precision {
-            TimestampPrecision::WordLevel => Some("Medium".to_string()),
-            TimestampPrecision::SegmentLevel => None, // insufficient precision → no confidence score
+            TimestampPrecision::WordLevel => Some(0.5),
+            TimestampPrecision::SegmentLevel => None,
         };
 
-        EditAction {
+        Some(EditAction {
             id: self.id.clone(),
+            action_type: EditActionType::Cut,
             source_media_id: self.source_media_id.clone(),
-            payload: ActionPayload::Cut { start_ms, end_ms },
-            source: ActionSource::LocalDetector,
+            start_ms,
+            end_ms,
+            source: EditActionSource::Local,
             reason: format!("filler:{}", self.matched_token),
             confidence,
             // Disabled by default — user must review.
             enabled: false,
             created_at,
             updated_at: created_at,
-        }
+            payload: None,
+        })
     }
 }
 
@@ -143,6 +156,9 @@ pub fn detect_fillers(
     let mut candidates = Vec::new();
 
     for segment in segments {
+        if segment.start_ms >= segment.end_ms {
+            continue;
+        }
         // Skip segments already classified filler by upstream (Whisper / transcript parser).
         if segment.is_filler {
             continue;
@@ -189,20 +205,17 @@ pub fn detect_fillers(
 /// Lowercase a string for consistent matching.
 /// Whisper output for Vietnamese is already NFC-normalised, so we only need lowercase.
 pub fn normalize(s: &str) -> String {
+    // The transcript parser already emits NFC text. Keep this helper as the
+    // single normalization boundary and lower-case here; malformed combining
+    // sequences are rejected by the whole-token matcher rather than treated as
+    // substring matches.
     s.to_lowercase()
 }
 
 /// Split text into whole tokens, strip punctuation, and normalise.
 fn tokenise(text: &str) -> Vec<String> {
     text.split_whitespace()
-        .map(|w| {
-            // Strip leading/trailing punctuation (Vietnamese doesn't use mid-word punct)
-            let stripped = w.trim_matches(|c: char| {
-                c.is_ascii_punctuation() || c == ',' || c == '.' || c == '!' || c == '?'
-                    || c == ':' || c == ';' || c == '"' || c == '\'' || c == '…'
-            });
-            normalize(stripped)
-        })
+        .map(|word| normalize(word.trim_matches(|character: char| !character.is_alphanumeric())))
         .filter(|t| !t.is_empty())
         .collect()
 }
@@ -303,18 +316,17 @@ mod tests {
             review_required: true,
         };
 
-        let action = candidate.to_edit_action(12345, 50, 60000);
-        assert_eq!(action.source, ActionSource::LocalDetector);
+        let action = candidate.to_edit_action(12345, 50, 60000).unwrap();
+        assert_eq!(action.source, EditActionSource::Local);
         assert!(action.reason.contains("filler"));
-        assert!(!action.enabled, "must be disabled by default for user review");
+        assert!(
+            !action.enabled,
+            "must be disabled by default for user review"
+        );
         assert_eq!(action.confidence, None, "segment-level → no confidence");
 
-        if let ActionPayload::Cut { start_ms, end_ms } = action.payload {
-            // With 50ms padding: start=0 (clamped), end=2050
-            assert_eq!(start_ms, 0);
-            assert_eq!(end_ms, 2050);
-        } else {
-            panic!("Expected Cut payload");
-        }
+        assert_eq!(action.action_type, EditActionType::Cut);
+        assert_eq!(action.start_ms, 0);
+        assert_eq!(action.end_ms, 2050);
     }
 }

@@ -117,7 +117,7 @@ Provide a short, user-readable 'reason'.
     }
 
     const body = await response.json()
-    let text = body.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
+    const text = body.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
 
     // JSON parsing without stripping since responseMimeType guarantees JSON output
     let actions = []
@@ -143,9 +143,10 @@ Provide a short, user-readable 'reason'.
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(err)
-    return new Response(JSON.stringify({ error: err.message }), {
+    const message = err instanceof Error ? err.message : 'Unexpected provider error'
+    return new Response(JSON.stringify({ error: message }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

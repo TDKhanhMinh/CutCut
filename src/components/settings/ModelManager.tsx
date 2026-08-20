@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { BrainCircuit, Download, Trash2, CheckCircle2, PlayCircle } from "lucide-react";
+import { BrainCircuit, CheckCircle2, Download, PlayCircle, Trash2, XCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,60 +12,44 @@ import {
 } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
-
-type ResourceState =
-  | "NotInstalled"
-  | "Installed"
-  | "Corrupted"
-  | { Downloading: { progress: number; downloaded: number; total: number } };
-
-interface ResourceItem {
-  id: string;
-  name: string;
-  version: string;
-  size_bytes: number;
-  url: string;
-}
+import type { ResourceItem, ResourceState } from "@/types/resource";
 
 export function ModelManager() {
   const [models, setModels] = useState<ResourceItem[]>([]);
   const [states, setStates] = useState<Record<string, ResourceState>>({});
   const [activeModel, setActiveModel] = useState<string | null>(null);
+  const [diskUsage, setDiskUsage] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
 
   const fetchModels = async () => {
     try {
-      const catalog: ResourceItem[] = await invoke("get_models");
+      const catalog = await invoke<ResourceItem[]>("get_models");
       setModels(catalog);
 
-      const statesObj: Record<string, ResourceState> = {};
-      for (const m of catalog) {
-        const state: ResourceState = await invoke("get_model_state", { item: m });
-        statesObj[m.id] = state;
+      const statesObject: Record<string, ResourceState> = {};
+      for (const model of catalog) {
+        statesObject[model.id] = await invoke<ResourceState>("get_model_state", { id: model.id });
       }
-      setStates(statesObj);
-
-      const active: string | null = await invoke("get_active_model");
-      setActiveModel(active);
+      setStates(statesObject);
+      setActiveModel(await invoke<string | null>("get_active_model"));
+      setDiskUsage(await invoke<number>("get_resource_usage"));
     } catch (error) {
       console.error("Failed to load models:", error);
     }
   };
 
-  const handleOpenChange = (open: boolean) => {
-    setIsOpen(open);
-    if (open) {
-      void fetchModels();
-    }
-  };
-
   useEffect(() => {
-    const unlistenProgress = listen("resource-download-progress", (event: { payload: { id: string; progress: number; downloaded: number; total: number } }) => {
+    const unlistenProgress = listen<{
+      id: string;
+      progress: number;
+      downloaded: number;
+      total: number;
+    }>("resource-download-progress", (event) => {
       const payload = event.payload;
-      setStates((prev) => ({
-        ...prev,
+      setStates((previous) => ({
+        ...previous,
         [payload.id]: {
-          Downloading: {
+          downloading: {
             progress: payload.progress,
             downloaded: payload.downloaded,
             total: payload.total,
@@ -73,44 +57,60 @@ export function ModelManager() {
         },
       }));
     });
-
-    const unlistenFinished = listen("resource-download-finished", () => {
-      fetchModels(); // Refresh states
+    const unlistenFinished = listen<{
+      id: string;
+      status: "installed" | "cancelled" | "failed";
+      reason?: string;
+    }>("resource-download-finished", (event) => {
+      if (event.payload.status === "failed") {
+        setStates((previous) => ({
+          ...previous,
+          [event.payload.id]: {
+            failed: { reason: event.payload.reason ?? "Tải resource thất bại." },
+          },
+        }));
+        return;
+      }
+      void fetchModels();
     });
 
     return () => {
-      unlistenProgress.then((f) => f());
-      unlistenFinished.then((f) => f());
+      unlistenProgress.then((dispose) => dispose());
+      unlistenFinished.then((dispose) => dispose());
     };
   }, []);
 
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (open) void fetchModels();
+  };
+
   const handleDownload = async (id: string) => {
     try {
-      // Optimistic UI for immediate feedback
-      setStates((prev) => ({
-        ...prev,
-        [id]: { Downloading: { progress: 0, downloaded: 0, total: 100 } },
-      }));
       await invoke("download_model", { id });
-      await fetchModels();
-    } catch (e) {
-      console.error(e);
-      if (typeof e === "string" && e.includes("Checksum mismatch")) {
-        alert("Checksum mismatch! The downloaded file might be corrupted. Please try again.");
-      }
-      await fetchModels();
+    } catch (error) {
+      console.error("Model download failed:", error);
+      setStates((previous) => ({
+        ...previous,
+        [id]: { failed: { reason: String(error) } },
+      }));
+    }
+  };
+
+  const handleCancel = async (id: string) => {
+    try {
+      await invoke("cancel_model_download", { id });
+    } catch (error) {
+      console.error("Model download cancellation failed:", error);
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
       await invoke("delete_model", { id });
-      if (activeModel === id) {
-        await invoke("set_active_model", { id: "" });
-      }
       await fetchModels();
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error("Model deletion failed:", error);
     }
   };
 
@@ -118,22 +118,16 @@ export function ModelManager() {
     try {
       await invoke("set_active_model", { id });
       setActiveModel(id);
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error("Failed to select model:", error);
     }
   };
 
-  const formatSize = (bytes: number) => {
-    return (bytes / 1024 / 1024).toFixed(1) + " MB";
-  };
+  const formatSize = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger 
-        render={
-          <Button variant="outline" size="sm" className="gap-2" />
-        }
-      >
+      <DialogTrigger render={<Button variant="outline" size="sm" className="gap-2" />}>
         <BrainCircuit className="h-4 w-4 text-primary" />
         <span className="hidden sm:inline">AI Models</span>
       </DialogTrigger>
@@ -141,66 +135,74 @@ export function ModelManager() {
         <DialogHeader>
           <DialogTitle>Quản lý Speech Models</DialogTitle>
           <DialogDescription>
-            Tải và chọn model STT phù hợp với cấu hình máy của bạn.
+            Model chỉ được chọn sau khi checksum và compatibility với runtime CPU pass.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4 mt-4">
-          {models.map((m) => {
-            const state = states[m.id] || "NotInstalled";
-            const isInstalled = state === "Installed";
-            const isDownloading = typeof state === "object" && "Downloading" in state;
-            const progress = isDownloading ? (state.Downloading.progress * 100) : 0;
-            const isActive = activeModel === m.id;
+        <p className="text-xs text-muted-foreground">
+          Đang dùng {formatSize(diskUsage)} trong app data directory.
+        </p>
+        <div className="mt-4 flex flex-col gap-4">
+          {models.map((model) => {
+            const state = states[model.id] ?? "notInstalled";
+            const isInstalled = state === "installed";
+            const isDownloading = typeof state === "object" && "downloading" in state;
+            const isIncompatible = typeof state === "object" && "incompatible" in state;
+            const isCorrupted = typeof state === "object" && "corrupted" in state;
+            const isFailed = typeof state === "object" && "failed" in state;
+            const progress = isDownloading ? state.downloading.progress * 100 : 0;
+            const isActive = activeModel === model.id;
 
             return (
               <div
-                key={m.id}
+                key={model.id}
                 className={`flex flex-col gap-3 rounded-lg border p-4 ${
                   isActive ? "border-primary bg-primary/5" : "bg-card"
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="font-medium flex items-center gap-2">
-                      {m.name}
-                      {isActive && (
-                        <CheckCircle2 className="h-4 w-4 text-primary" />
-                      )}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 flex-col">
+                    <span className="flex items-center gap-2 font-medium">
+                      {model.name}
+                      {isActive && <CheckCircle2 className="h-4 w-4 text-primary" />}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      Kích thước: {formatSize(m.size_bytes)}
+                      {formatSize(model.sizeBytes)} · {model.id}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     {!isInstalled && !isDownloading && (
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => handleDownload(m.id)}
-                        className="gap-2"
+                        onClick={() => void handleDownload(model.id)}
                       >
                         <Download className="h-4 w-4" />
-                        Tải về
+                        {isCorrupted || isFailed ? "Tải lại" : "Tải về"}
+                      </Button>
+                    )}
+                    {isDownloading && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => void handleCancel(model.id)}
+                      >
+                        <XCircle className="h-4 w-4" />
                       </Button>
                     )}
                     {isInstalled && !isActive && (
-                      <Button
-                        size="sm"
-                        onClick={() => handleSetActive(m.id)}
-                        className="gap-2"
-                      >
+                      <Button size="sm" onClick={() => void handleSetActive(model.id)}>
                         <PlayCircle className="h-4 w-4" />
                         Dùng
                       </Button>
                     )}
-                    {isInstalled && (
+                    {isInstalled && !isActive && (
                       <Button
                         size="icon"
                         variant="ghost"
                         className="text-destructive"
-                        onClick={() => handleDelete(m.id)}
+                        onClick={() => void handleDelete(model.id)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -216,6 +218,21 @@ export function ModelManager() {
                     </div>
                     <Progress value={progress} className="h-1.5" />
                   </div>
+                )}
+                {isIncompatible && (
+                  <p className="text-xs text-amber-600">
+                    Không tương thích: {state.incompatible.reason}
+                  </p>
+                )}
+                {isCorrupted && (
+                  <p className="text-xs text-destructive">
+                    Checksum/manifest lỗi: {state.corrupted.reason} Hãy tải lại model.
+                  </p>
+                )}
+                {isFailed && (
+                  <p className="text-xs text-destructive">
+                    Tải model thất bại: {state.failed.reason}
+                  </p>
                 )}
               </div>
             );
