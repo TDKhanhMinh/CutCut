@@ -26,12 +26,26 @@ impl JobChild {
 pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, JobChild>>>,
     cancelled: Arc<Mutex<HashSet<String>>>,
+    cooperative: Arc<Mutex<HashSet<String>>>,
 }
 
 impl JobManager {
     pub async fn add_job(&self, job_id: String, child: JobChild) {
         let mut jobs = self.jobs.lock().await;
         jobs.insert(job_id, child);
+    }
+
+    pub async fn register_cooperative(&self, job_id: String) {
+        self.cooperative.lock().await.insert(job_id);
+    }
+
+    pub async fn finish_cooperative(&self, job_id: &str) {
+        self.cooperative.lock().await.remove(job_id);
+        self.cancelled.lock().await.remove(job_id);
+    }
+
+    pub async fn is_cancelled(&self, job_id: &str) -> bool {
+        self.cancelled.lock().await.contains(job_id)
     }
 
     pub async fn remove_job(&self, job_id: &str) -> Option<JobChild> {
@@ -49,8 +63,12 @@ impl JobManager {
             Ok(())
         } else {
             drop(jobs);
-            self.cancelled.lock().await.remove(job_id);
-            Err(format!("Job {} not found or already completed", job_id))
+            if self.cooperative.lock().await.contains(job_id) {
+                Ok(())
+            } else {
+                self.cancelled.lock().await.remove(job_id);
+                Err(format!("Job {} not found or already completed", job_id))
+            }
         }
     }
 

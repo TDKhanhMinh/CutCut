@@ -5,6 +5,7 @@ import { VideoPreview, type VideoPreviewRef } from "../components/media/VideoPre
 import { ExportPanel } from "../components/media/ExportPanel";
 import { MediaRelink } from "../components/media/MediaRelink";
 import { ReviewControls } from "../components/editor/ReviewControls";
+import { DEFAULT_SILENCE_CONFIG } from "@/types/silence";
 
 export function Home() {
   const { activeProject, updateProject, missingMediaIds } = useProjectStore();
@@ -28,6 +29,13 @@ export function Home() {
 
   const handlePreviewSuggestion = (startMs: number, endMs: number) => {
     videoPreviewRef.current?.playRange(startMs, endMs);
+  };
+
+  const handleEditPlanChange = (editPlan: typeof activeProject.editPlan) => {
+    updateProject((draft) => {
+      draft.editPlan = editPlan;
+      draft.updatedAt = Date.now();
+    });
   };
 
   return (
@@ -68,6 +76,7 @@ export function Home() {
             <VideoPreview
               ref={videoPreviewRef}
               path={sourceData.path}
+              sourceMediaId={sourceData.id}
               editPlan={activeProject.editPlan}
               captionCues={activeProject.captionCues}
               captionStyle={activeProject.captions}
@@ -79,7 +88,15 @@ export function Home() {
           </div>
 
           <div className="h-[600px] w-full max-w-md flex-1">
-            <ReviewControls mediaId={sourceData.id} onPreview={handlePreviewSuggestion} />
+            <ReviewControls
+              mediaId={sourceData.id}
+              sourcePath={sourceData.path}
+              durationMs={Math.max(0, Math.round(sourceData.metadata.durationSec * 1000))}
+              silenceConfig={activeProject.silenceSettings ?? DEFAULT_SILENCE_CONFIG}
+              editPlan={activeProject.editPlan}
+              onEditPlanChange={handleEditPlanChange}
+              onPreview={handlePreviewSuggestion}
+            />
           </div>
         </div>
       )}

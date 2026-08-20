@@ -6,7 +6,7 @@ import { EditPlan } from "@/types/project";
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** A merged, sorted cut interval in source-time milliseconds. */
-interface CutInterval {
+export interface CutInterval {
   startMs: number;
   endMs: number;
 }
@@ -30,9 +30,18 @@ const SEEK_TOLERANCE_MS = 150;
  * on the frontend for safety and to handle UI-only toggle state changes that
  * haven't been round-tripped through the validator yet.
  */
-export function buildCutIndex(plan: EditPlan): CutInterval[] {
+export function buildCutIndex(plan: EditPlan, sourceMediaId?: string): CutInterval[] {
   const raw: CutInterval[] = plan.actions
-    .filter((action) => action.enabled && action.type === "cut")
+    .filter(
+      (action) =>
+        action.enabled &&
+        action.type === "cut" &&
+        (!sourceMediaId || action.sourceMediaId === sourceMediaId) &&
+        Number.isFinite(action.startMs) &&
+        Number.isFinite(action.endMs) &&
+        action.startMs >= 0 &&
+        action.endMs > action.startMs,
+    )
     .map((action) => ({ startMs: action.startMs, endMs: action.endMs }))
     .sort((a, b) => a.startMs - b.startMs);
 
@@ -58,12 +67,18 @@ export function buildCutIndex(plan: EditPlan): CutInterval[] {
  * Returns `null` if no enabled cut covers the given time.
  */
 export function findActiveCut(cutIndex: CutInterval[], timeMs: number): CutInterval | null {
-  for (const cut of cutIndex) {
-    if (timeMs >= cut.startMs && timeMs < cut.endMs) {
+  let low = 0;
+  let high = cutIndex.length - 1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const cut = cutIndex[middle];
+    if (timeMs < cut.startMs) {
+      high = middle - 1;
+    } else if (timeMs >= cut.endMs) {
+      low = middle + 1;
+    } else {
       return cut;
     }
-    // Index is sorted — no point checking further
-    if (cut.startMs > timeMs) break;
   }
   return null;
 }
@@ -79,6 +94,7 @@ interface UseCutPreviewOptions {
   plan: EditPlan | null;
   /** Whether cut-preview mode is active. When false the hook is a no-op. */
   enabled: boolean;
+  sourceMediaId?: string;
 }
 
 /**
@@ -93,7 +109,7 @@ interface UseCutPreviewOptions {
  * - The hook never writes to Project JSON or touches source media.
  * - Source time ≠ output/edited time; this is a preview approximation only.
  */
-export function useCutPreview({ videoRef, plan, enabled }: UseCutPreviewOptions) {
+export function useCutPreview({ videoRef, plan, enabled, sourceMediaId }: UseCutPreviewOptions) {
   // Mutable ref for cut index — avoids stale closures in timeupdate handler
   const cutIndexRef = useRef<CutInterval[]>([]);
 
@@ -106,8 +122,8 @@ export function useCutPreview({ videoRef, plan, enabled }: UseCutPreviewOptions)
       cutIndexRef.current = [];
       return;
     }
-    cutIndexRef.current = buildCutIndex(plan);
-  }, [plan, enabled]);
+    cutIndexRef.current = buildCutIndex(plan, sourceMediaId);
+  }, [plan, enabled, sourceMediaId]);
 
   const handleTimeUpdate = useCallback(() => {
     const video = videoRef.current;
@@ -167,7 +183,8 @@ export function useCutPreview({ videoRef, plan, enabled }: UseCutPreviewOptions)
     // can evaluate the new position freely. The handleTimeUpdate handler
     // will then detect and skip the cut if needed.
     lastSeekTargetRef.current = null;
-  }, []);
+    window.setTimeout(handleTimeUpdate, 0);
+  }, [handleTimeUpdate]);
 
   return { handleUserSeek };
 }

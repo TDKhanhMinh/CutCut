@@ -1,9 +1,10 @@
 use super::artifact_registry::ArtifactRecord;
 use super::edit_plan::EditPlan;
 use super::media_info::MediaSourceMetadata;
+use super::silence::SilenceConfig;
 use serde::{Deserialize, Serialize};
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 /// Canonical portable editing state. Source media is referenced by path only;
 /// the project file never contains media bytes or credentials.
@@ -17,7 +18,11 @@ pub struct Project {
     pub media: Vec<MediaSource>,
     pub transcript: Option<Transcript>,
     pub edit_plan: EditPlan,
-    pub captions: Option<CaptionSettings>,
+    #[serde(default)]
+    pub caption_cues: Vec<CaptionCue>,
+    pub captions: Option<CaptionStyle>,
+    #[serde(default)]
+    pub silence_settings: Option<SilenceConfig>,
     pub settings: OutputSettings,
     #[serde(default)]
     pub artifacts: Vec<ArtifactRecord>,
@@ -88,15 +93,6 @@ pub struct CaptionStyle {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct CaptionSettings {
-    pub style: String,
-    pub font_size: u32,
-    pub primary_color: String,
-    pub stroke_color: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct OutputSettings {
     pub aspect_ratio: String,
     pub target_resolution: u32,
@@ -118,7 +114,9 @@ impl Default for Project {
             media: Vec::new(),
             transcript: None,
             edit_plan: EditPlan::default(),
+            caption_cues: Vec::new(),
             captions: None,
+            silence_settings: None,
             settings: OutputSettings {
                 aspect_ratio: "16:9".to_string(),
                 target_resolution: 1080,

@@ -1,5 +1,7 @@
 pub mod cache;
+pub mod caption;
 pub mod diagnostics;
+pub mod filler;
 pub mod fusion;
 pub mod media;
 pub mod project;

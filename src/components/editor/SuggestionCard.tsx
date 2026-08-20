@@ -9,7 +9,7 @@ import { DetectorEvidence } from "@/types/fusion";
 export interface CutSuggestion {
   action: EditAction;
   evidence: DetectorEvidence;
-  source_version: string;
+  sourceVersion: string;
 }
 
 interface SuggestionCardProps {

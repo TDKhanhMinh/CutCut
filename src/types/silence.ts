@@ -35,3 +35,8 @@ export interface SilenceDetectionResult {
   detection: SilenceDetectionMetadata;
   intervals: SilenceInterval[];
 }
+
+export const DEFAULT_SILENCE_CONFIG: SilenceConfig = {
+  preset: "balanced",
+  settings: { thresholdDb: -35, minDurationMs: 750, paddingMs: 0 },
+};

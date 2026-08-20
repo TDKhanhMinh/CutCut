@@ -25,6 +25,7 @@ export type VideoPreviewHandle = VideoPreviewRef;
 
 interface VideoPreviewProps {
   path: string;
+  sourceMediaId?: string;
   editPlan?: EditPlan | null;
   captionCues?: CaptionCue[];
   captionStyle?: CaptionStyle | null;
@@ -36,6 +37,7 @@ interface VideoPreviewProps {
 export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(function VideoPreview(
   {
     path,
+    sourceMediaId,
     editPlan,
     captionCues,
     captionStyle,
@@ -55,6 +57,7 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(funct
     videoRef,
     plan: editPlan ?? null,
     enabled: cutPreviewActive,
+    sourceMediaId,
   });
 
   const assetUrl = convertFileSrc(path);
@@ -212,6 +215,7 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(funct
             cues={captionCues ?? []}
             styleModel={captionStyle ?? null}
             editPlan={editPlan}
+            sourceMediaId={sourceMediaId}
           />
         )}
       </div>

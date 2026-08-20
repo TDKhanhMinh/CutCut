@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub const CURRENT_EDIT_PLAN_SCHEMA_VERSION: u32 = 1;
+
 /// Canonical, non-destructive instruction consumed by preview and rendering.
 /// Timestamps are always milliseconds.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -17,6 +19,8 @@ pub struct EditAction {
     pub enabled: bool,
     pub created_at: u64,
     pub updated_at: u64,
+    #[serde(default)]
+    pub payload: Option<EditActionPayload>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -25,6 +29,23 @@ pub enum EditActionType {
     Cut,
     Keep,
     Mute,
+    Zoom,
+    Caption,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum EditActionPayload {
+    Zoom {
+        scale: f32,
+        anchor_x: f32,
+        anchor_y: f32,
+        easing: String,
+    },
+    Caption {
+        cue_id: Option<String>,
+        style_reference: Option<String>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -38,7 +59,13 @@ pub enum EditActionSource {
 #[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EditPlan {
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
     pub actions: Vec<EditAction>,
+}
+
+fn default_schema_version() -> u32 {
+    CURRENT_EDIT_PLAN_SCHEMA_VERSION
 }
 
 #[cfg(test)]
@@ -59,6 +86,7 @@ mod tests {
             enabled: true,
             created_at: 1,
             updated_at: 1,
+            payload: None,
         };
 
         let json = serde_json::to_value(action).unwrap();

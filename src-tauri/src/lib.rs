@@ -36,6 +36,8 @@ pub fn run() {
             commands::media::check_media_exists,
             commands::media::extract_audio_for_stt,
             commands::media::cleanup_stt_audio,
+            commands::caption::generate_caption_cues,
+            commands::filler::detect_filler_candidates,
             commands::whisper::transcribe_audio,
             commands::resource::get_models,
             commands::resource::get_model_state,

@@ -1,4 +1,4 @@
-use crate::models::project::{Project, CURRENT_SCHEMA_VERSION};
+use crate::models::project::{CaptionStyle, Project, CURRENT_SCHEMA_VERSION};
 use serde_json::Value;
 
 #[derive(Debug, thiserror::Error)]
@@ -24,15 +24,74 @@ pub fn load_project_from_json(json_str: &str) -> Result<Project, MigrationError>
         return Err(MigrationError::UnsupportedNewerVersion(schema_version));
     }
 
-    if schema_version < CURRENT_SCHEMA_VERSION {
-        // Here we will do sequential migrations when we have V2, V3.
-        // e.g., if schema_version == 1 { raw_val = migrate_1_to_2(raw_val); schema_version = 2; }
-    }
+    let raw_val = if schema_version < CURRENT_SCHEMA_VERSION {
+        migrate_to_current(raw_val, schema_version)
+    } else {
+        raw_val
+    };
 
     // Now it should match CURRENT_SCHEMA_VERSION
     let project: Project = serde_json::from_value(raw_val)?;
 
     Ok(project)
+}
+
+fn migrate_to_current(mut value: Value, from_version: u32) -> Value {
+    let Some(object) = value.as_object_mut() else {
+        return value;
+    };
+
+    if from_version < 2 {
+        object
+            .entry("captionCues".to_string())
+            .or_insert_with(|| Value::Array(Vec::new()));
+        object
+            .entry("silenceSettings".to_string())
+            .or_insert(Value::Null);
+
+        if let Some(legacy) = object.get("captions").cloned() {
+            if let Some(legacy_object) = legacy.as_object() {
+                if legacy_object.get("fontSize").is_some() {
+                    let style = CaptionStyle {
+                        preset_id: legacy_object
+                            .get("style")
+                            .and_then(Value::as_str)
+                            .unwrap_or("default_16_9")
+                            .to_string(),
+                        font_family: "Arial".to_string(),
+                        font_weight: 700,
+                        font_style: "normal".to_string(),
+                        font_size_vh: 0.06,
+                        position_x_vw: 0.5,
+                        position_y_vh: 0.85,
+                        alignment: "center".to_string(),
+                        primary_color: legacy_object
+                            .get("primaryColor")
+                            .and_then(Value::as_str)
+                            .unwrap_or("#FFFFFF")
+                            .to_string(),
+                        outline_color: legacy_object
+                            .get("strokeColor")
+                            .and_then(Value::as_str)
+                            .map(ToString::to_string),
+                        outline_width_vh: Some(0.005),
+                        background_color: None,
+                        background_opacity: None,
+                    };
+                    if let Ok(value) = serde_json::to_value(style) {
+                        object.insert("captions".to_string(), value);
+                    }
+                }
+            }
+        }
+
+        object.insert(
+            "schemaVersion".to_string(),
+            Value::Number(CURRENT_SCHEMA_VERSION.into()),
+        );
+    }
+
+    value
 }
 
 #[cfg(test)]
@@ -58,13 +117,31 @@ mod tests {
 
     #[test]
     fn test_valid_v1_schema() {
-        // We will create a minimal V1 schema
         let project = Project::default();
-        let json = serde_json::to_string(&project).unwrap();
+        let mut value = serde_json::to_value(&project).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.insert("schemaVersion".to_string(), 1.into());
+        object.remove("captionCues");
+        object.remove("silenceSettings");
+        object.insert(
+            "captions".to_string(),
+            serde_json::json!({
+                "style": "default_16_9",
+                "fontSize": 64,
+                "primaryColor": "#00ff00",
+                "strokeColor": "#111111"
+            }),
+        );
+        let json = serde_json::to_string(&value).unwrap();
 
         let loaded = load_project_from_json(&json).unwrap();
         assert_eq!(loaded.id, project.id);
-        assert_eq!(loaded.schema_version, 1);
+        assert_eq!(loaded.schema_version, CURRENT_SCHEMA_VERSION);
+        assert!(loaded.caption_cues.is_empty());
+        assert!(loaded.silence_settings.is_none());
+        let captions = loaded.captions.expect("legacy caption settings migrate");
+        assert_eq!(captions.primary_color, "#00ff00");
+        assert_eq!(captions.font_family, "Arial");
     }
 
     #[test]

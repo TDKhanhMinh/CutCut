@@ -25,7 +25,7 @@ pub struct SpeechInterval {
     pub end_ms: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NonSpeechInterval {
     pub start_ms: u64,
     pub end_ms: u64,

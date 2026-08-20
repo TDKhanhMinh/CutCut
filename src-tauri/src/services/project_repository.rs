@@ -148,7 +148,10 @@ fn backup_path(path: &Path) -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{backup_path, load_project, persist_transcript, save_project, RepositoryError};
-    use crate::models::project::{Project, Transcript, TranscriptSegment};
+    use crate::models::project::{
+        CaptionCue, CaptionStyle, Project, Transcript, TranscriptSegment,
+    };
+    use crate::models::silence::{SilenceConfig, SilencePreset};
     use std::fs;
 
     #[test]
@@ -162,6 +165,41 @@ mod tests {
 
         assert_eq!(reopened.id, project.id);
         assert_eq!(reopened.schema_version, project.schema_version);
+    }
+
+    #[test]
+    fn round_trips_detection_and_caption_contracts() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("project.cutcut");
+        let project = Project {
+            silence_settings: Some(SilenceConfig {
+                preset: SilencePreset::Aggressive,
+                ..SilenceConfig::default()
+            }),
+            caption_cues: vec![CaptionCue {
+                id: "cue-1".to_string(),
+                source_segment_ids: vec!["segment-1".to_string()],
+                start_ms: 100,
+                end_ms: 800,
+                text: "Xin chào".to_string(),
+                is_manual_modified: true,
+            }],
+            captions: Some(CaptionStyle {
+                primary_color: "#00FF00".to_string(),
+                ..CaptionStyle::get_default_16_9_preset()
+            }),
+            ..Project::default()
+        };
+
+        save_project(&path, &project).unwrap();
+        let reopened = load_project(&path).unwrap();
+
+        assert_eq!(
+            reopened.silence_settings.unwrap().preset,
+            SilencePreset::Aggressive
+        );
+        assert_eq!(reopened.caption_cues[0].text, "Xin chào");
+        assert_eq!(reopened.captions.unwrap().primary_color, "#00FF00");
     }
 
     #[test]

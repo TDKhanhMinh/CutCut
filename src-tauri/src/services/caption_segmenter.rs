@@ -109,18 +109,41 @@ pub fn generate_cues(transcript: &Transcript, existing_cues: &[CaptionCue]) -> V
         }
     }
 
-    // Pass 3: Preserve manual modifications
-    // If there is an existing cue with is_manual_modified = true, and its ID matches or
-    // it perfectly overlaps, we restore it to prevent silent data loss.
+    // Pass 3: Preserve manual modifications. Match by stable ID first, then by
+    // source linkage and timing overlap so a harmless re-segmentation cannot
+    // silently overwrite a user's caption text.
+    let mut matched_manual_ids = std::collections::HashSet::new();
     for new_cue in generated_cues.iter_mut() {
         if let Some(existing) = existing_cues
             .iter()
-            .find(|c| c.id == new_cue.id && c.is_manual_modified)
+            .filter(|c| c.is_manual_modified)
+            .find(|c| {
+                c.id == new_cue.id
+                    || (c
+                        .source_segment_ids
+                        .iter()
+                        .any(|id| new_cue.source_segment_ids.contains(id))
+                        && c.start_ms < new_cue.end_ms
+                        && new_cue.start_ms < c.end_ms)
+            })
         {
+            matched_manual_ids.insert(existing.id.clone());
+            new_cue.id = existing.id.clone();
             new_cue.text = existing.text.clone();
             new_cue.is_manual_modified = true;
         }
     }
+
+    // Keep manual-only cues in the result until the user explicitly removes
+    // them. They remain editable and can be reconciled in a later review pass.
+    for existing in existing_cues.iter().filter(|cue| cue.is_manual_modified) {
+        if !matched_manual_ids.contains(&existing.id)
+            && !generated_cues.iter().any(|cue| cue.id == existing.id)
+        {
+            generated_cues.push(existing.clone());
+        }
+    }
+    generated_cues.sort_by_key(|cue| (cue.start_ms, cue.end_ms, cue.id.clone()));
 
     generated_cues
 }

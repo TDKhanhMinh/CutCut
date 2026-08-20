@@ -2,7 +2,7 @@ import type { ArtifactRecord } from "./artifact";
 import type { MediaSourceMetadata } from "@/types/media";
 import type { SilenceConfig } from "./silence";
 
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 /** Canonical Project JSON contract. All timestamps use milliseconds. */
 export interface Project {
@@ -49,11 +49,26 @@ export interface TranscriptSegment {
 }
 
 export interface EditPlan {
+  schemaVersion?: number;
   actions: EditAction[];
 }
 
-export type EditActionType = "cut" | "keep" | "mute";
+export type EditActionType = "cut" | "keep" | "mute" | "zoom" | "caption";
 export type EditActionSource = "local" | "ai" | "user";
+
+export type EditActionPayload =
+  | {
+      kind: "zoom";
+      scale: number;
+      anchorX: number;
+      anchorY: number;
+      easing: string;
+    }
+  | {
+      kind: "caption";
+      cueId?: string | null;
+      styleReference?: string | null;
+    };
 
 export interface EditAction {
   id: string;
@@ -67,6 +82,7 @@ export interface EditAction {
   enabled: boolean;
   createdAt: number;
   updatedAt: number;
+  payload?: EditActionPayload | null;
 }
 
 export interface CaptionStyle {

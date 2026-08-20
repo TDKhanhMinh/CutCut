@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { TranscriptPanel } from "../editor/transcript/TranscriptPanel";
 import { SilenceSettingsPanel } from "../settings/SilenceSettingsPanel";
-import type { SilenceConfig } from "@/types/silence";
+import { DEFAULT_SILENCE_CONFIG, type SilenceConfig } from "@/types/silence";
 import type { Transcript } from "@/types/transcript";
 import { useTranscriptSync } from "@/hooks/useTranscriptSync";
 import { useProjectStore } from "@/stores/useProjectStore";
@@ -28,20 +28,27 @@ export function Workspace() {
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isSilenceSettingsOpen, setIsSilenceSettingsOpen] = useState(false);
-  const [silenceConfig, setSilenceConfig] = useState<SilenceConfig>({
-    preset: "balanced",
-    settings: { thresholdDb: -35, minDurationMs: 750, paddingMs: 0 },
-  });
   const [mockTranscriptState, setMockTranscriptState] = useState(mockTranscript);
   const videoPreviewRef = useRef<VideoPreviewHandle>(null);
   const activeProject = useProjectStore((state) => state.activeProject);
   const missingMediaIds = useProjectStore((state) => state.missingMediaIds);
   const updateTranscriptSegmentText = useProjectStore((state) => state.updateTranscriptSegmentText);
   const revertTranscriptSegmentText = useProjectStore((state) => state.revertTranscriptSegmentText);
+  const updateProject = useProjectStore((state) => state.updateProject);
   const transcript = activeProject?.transcript ?? mockTranscriptState;
   const source = activeProject?.media[0] ?? null;
   const isSourceMissing = source ? missingMediaIds.includes(source.id) : false;
   const activeSegmentId = useTranscriptSync(transcript?.segments ?? [], currentTime);
+
+  const silenceConfig = activeProject?.silenceSettings ?? DEFAULT_SILENCE_CONFIG;
+
+  const handleSilenceConfigChange = (config: SilenceConfig) => {
+    if (!activeProject) return;
+    updateProject((draft) => {
+      draft.silenceSettings = config;
+      draft.updatedAt = Date.now();
+    });
+  };
 
   const handleTranscriptEdit = (id: string, newText: string) => {
     if (activeProject) {
@@ -94,6 +101,7 @@ export function Workspace() {
             <VideoPreview
               ref={videoPreviewRef}
               path={source.path}
+              sourceMediaId={source.id}
               editPlan={activeProject?.editPlan}
               captionCues={activeProject?.captionCues}
               captionStyle={activeProject?.captions}
@@ -141,7 +149,7 @@ export function Workspace() {
         isOpen={isSilenceSettingsOpen}
         onOpenChange={setIsSilenceSettingsOpen}
         config={silenceConfig}
-        onChange={setSilenceConfig}
+        onChange={handleSilenceConfigChange}
         testVideoPath={source && !isSourceMissing ? source.path : undefined}
       />
 

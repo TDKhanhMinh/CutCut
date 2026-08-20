@@ -16,6 +16,15 @@ pub struct SilenceConfig {
     pub settings: SilenceSettings,
 }
 
+impl Default for SilenceConfig {
+    fn default() -> Self {
+        Self {
+            preset: SilencePreset::Balanced,
+            settings: SilenceSettings::default(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SilenceSettings {
@@ -23,6 +32,16 @@ pub struct SilenceSettings {
     pub min_duration_ms: u64,
     #[serde(default)]
     pub padding_ms: u64,
+}
+
+impl Default for SilenceSettings {
+    fn default() -> Self {
+        Self {
+            threshold_db: -35,
+            min_duration_ms: 750,
+            padding_ms: 0,
+        }
+    }
 }
 
 pub const SILENCE_DETECTOR_VERSION: &str = "ffmpeg-silencedetect-v1";

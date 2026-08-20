@@ -94,7 +94,7 @@ impl FillerCandidate {
         created_at: u64,
         padding_ms: u64,
         media_duration_ms: u64,
-    ) -> EditAction {
+    ) -> Option<EditAction> {
         // Apply pre/post padding clamped to [0, media_duration].
         let padded_start = self.start_ms.saturating_sub(padding_ms);
         let padded_end = (self.end_ms + padding_ms).min(media_duration_ms);
@@ -103,15 +103,22 @@ impl FillerCandidate {
         let (start_ms, end_ms) = if padded_start < padded_end {
             (padded_start, padded_end)
         } else {
-            (self.start_ms, self.end_ms)
+            (
+                self.start_ms.min(media_duration_ms),
+                self.end_ms.min(media_duration_ms),
+            )
         };
+
+        if start_ms >= end_ms {
+            return None;
+        }
 
         let confidence = match self.precision {
             TimestampPrecision::WordLevel => Some(0.5),
             TimestampPrecision::SegmentLevel => None,
         };
 
-        EditAction {
+        Some(EditAction {
             id: self.id.clone(),
             action_type: EditActionType::Cut,
             source_media_id: self.source_media_id.clone(),
@@ -124,7 +131,8 @@ impl FillerCandidate {
             enabled: false,
             created_at,
             updated_at: created_at,
-        }
+            payload: None,
+        })
     }
 }
 
@@ -148,6 +156,9 @@ pub fn detect_fillers(
     let mut candidates = Vec::new();
 
     for segment in segments {
+        if segment.start_ms >= segment.end_ms {
+            continue;
+        }
         // Skip segments already classified filler by upstream (Whisper / transcript parser).
         if segment.is_filler {
             continue;
@@ -194,28 +205,17 @@ pub fn detect_fillers(
 /// Lowercase a string for consistent matching.
 /// Whisper output for Vietnamese is already NFC-normalised, so we only need lowercase.
 pub fn normalize(s: &str) -> String {
+    // The transcript parser already emits NFC text. Keep this helper as the
+    // single normalization boundary and lower-case here; malformed combining
+    // sequences are rejected by the whole-token matcher rather than treated as
+    // substring matches.
     s.to_lowercase()
 }
 
 /// Split text into whole tokens, strip punctuation, and normalise.
 fn tokenise(text: &str) -> Vec<String> {
     text.split_whitespace()
-        .map(|w| {
-            // Strip leading/trailing punctuation (Vietnamese doesn't use mid-word punct)
-            let stripped = w.trim_matches(|c: char| {
-                c.is_ascii_punctuation()
-                    || c == ','
-                    || c == '.'
-                    || c == '!'
-                    || c == '?'
-                    || c == ':'
-                    || c == ';'
-                    || c == '"'
-                    || c == '\''
-                    || c == '…'
-            });
-            normalize(stripped)
-        })
+        .map(|word| normalize(word.trim_matches(|character: char| !character.is_alphanumeric())))
         .filter(|t| !t.is_empty())
         .collect()
 }
@@ -316,7 +316,7 @@ mod tests {
             review_required: true,
         };
 
-        let action = candidate.to_edit_action(12345, 50, 60000);
+        let action = candidate.to_edit_action(12345, 50, 60000).unwrap();
         assert_eq!(action.source, EditActionSource::Local);
         assert!(action.reason.contains("filler"));
         assert!(

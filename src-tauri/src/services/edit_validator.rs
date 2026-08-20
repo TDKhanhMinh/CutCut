@@ -1,4 +1,6 @@
-use crate::models::edit_plan::{EditActionType, EditPlan};
+use crate::models::edit_plan::{
+    EditActionPayload, EditActionType, EditPlan, CURRENT_EDIT_PLAN_SCHEMA_VERSION,
+};
 use crate::models::project::MediaSource;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -24,7 +26,20 @@ pub fn validate_and_normalize(
     plan: EditPlan,
     media: &[MediaSource],
 ) -> (EditPlan, Vec<ValidationIssue>) {
+    let EditPlan {
+        schema_version,
+        actions,
+    } = plan;
     let mut issues = Vec::new();
+    if schema_version > CURRENT_EDIT_PLAN_SCHEMA_VERSION {
+        issues.push(issue(
+            IssueLevel::Error,
+            &format!(
+                "Unsupported EditPlan schema version: {schema_version} (current {CURRENT_EDIT_PLAN_SCHEMA_VERSION})"
+            ),
+            None,
+        ));
+    }
     let media_durations: HashMap<String, u64> = media
         .iter()
         .map(|item| {
@@ -37,7 +52,7 @@ pub fn validate_and_normalize(
     let mut seen_ids = HashSet::new();
     let mut valid_actions = Vec::new();
 
-    for action in plan.actions {
+    for action in actions {
         let mut valid = true;
         if !seen_ids.insert(action.id.clone()) {
             issues.push(issue(
@@ -79,6 +94,92 @@ pub fn validate_and_normalize(
             ));
             valid = false;
         }
+        if let Some(payload) = action.payload.as_ref() {
+            match (action.action_type.clone(), payload) {
+                (
+                    EditActionType::Zoom,
+                    EditActionPayload::Zoom {
+                        scale,
+                        anchor_x,
+                        anchor_y,
+                        easing,
+                    },
+                ) => {
+                    if !scale.is_finite() || !(1.0..=4.0).contains(scale) {
+                        issues.push(issue(
+                            IssueLevel::Error,
+                            "Zoom scale must be finite and between 1.0 and 4.0",
+                            Some(action.id.clone()),
+                        ));
+                        valid = false;
+                    }
+                    if !anchor_x.is_finite()
+                        || !(0.0..=1.0).contains(anchor_x)
+                        || !anchor_y.is_finite()
+                        || !(0.0..=1.0).contains(anchor_y)
+                    {
+                        issues.push(issue(
+                            IssueLevel::Error,
+                            "Zoom anchors must be finite normalized coordinates",
+                            Some(action.id.clone()),
+                        ));
+                        valid = false;
+                    }
+                    if easing.trim().is_empty() {
+                        issues.push(issue(
+                            IssueLevel::Error,
+                            "Zoom easing must not be empty",
+                            Some(action.id.clone()),
+                        ));
+                        valid = false;
+                    }
+                }
+                (
+                    EditActionType::Caption,
+                    EditActionPayload::Caption {
+                        cue_id,
+                        style_reference,
+                    },
+                ) => {
+                    if cue_id.as_deref().unwrap_or_default().is_empty()
+                        && style_reference.as_deref().unwrap_or_default().is_empty()
+                    {
+                        issues.push(issue(
+                            IssueLevel::Error,
+                            "Caption action needs a cue or style reference",
+                            Some(action.id.clone()),
+                        ));
+                        valid = false;
+                    }
+                }
+                (EditActionType::Cut | EditActionType::Keep | EditActionType::Mute, _) => {
+                    issues.push(issue(
+                        IssueLevel::Error,
+                        "Cut/keep/mute actions cannot carry a typed payload",
+                        Some(action.id.clone()),
+                    ));
+                    valid = false;
+                }
+                (EditActionType::Zoom | EditActionType::Caption, _) => {
+                    issues.push(issue(
+                        IssueLevel::Error,
+                        "Action payload does not match its action type",
+                        Some(action.id.clone()),
+                    ));
+                    valid = false;
+                }
+            }
+        } else if matches!(
+            action.action_type,
+            EditActionType::Zoom | EditActionType::Caption
+        ) {
+            issues.push(issue(
+                IssueLevel::Error,
+                "Zoom and caption actions require a typed payload",
+                Some(action.id.clone()),
+            ));
+            valid = false;
+        }
         if valid {
             valid_actions.push(action);
         }
@@ -95,6 +196,8 @@ pub fn validate_and_normalize(
                     && previous.enabled
                     && previous.source_media_id == action.source_media_id
                     && action.start_ms <= previous.end_ms
+                    && previous.reason == action.reason
+                    && previous.source == action.source
                 {
                     let old_end = previous.end_ms;
                     previous.end_ms = previous.end_ms.max(action.end_ms);
@@ -123,6 +226,41 @@ pub fn validate_and_normalize(
         normalized.push(action);
     }
 
+    for (source_id, duration_ms) in &media_durations {
+        let covers_entire_source = normalized.iter().any(|action| {
+            action.action_type == EditActionType::Cut
+                && action.enabled
+                && action.source_media_id == *source_id
+                && action.start_ms == 0
+                && action.end_ms >= *duration_ms
+        });
+        if covers_entire_source {
+            let explicit_user_override = normalized.iter().any(|action| {
+                action.action_type == EditActionType::Cut
+                    && action.enabled
+                    && action.source_media_id == *source_id
+                    && action.start_ms == 0
+                    && action.end_ms >= *duration_ms
+                    && action.source == crate::models::edit_plan::EditActionSource::User
+                    && action.reason.to_ascii_lowercase().contains("explicit")
+            });
+            if !explicit_user_override {
+                issues.push(issue(
+                    IssueLevel::Error,
+                    "Enabled cuts cannot remove the entire source without an explicit user override",
+                    None,
+                ));
+                normalized.retain(|action| {
+                    !(action.action_type == EditActionType::Cut
+                        && action.enabled
+                        && action.source_media_id == *source_id
+                        && action.start_ms == 0
+                        && action.end_ms >= *duration_ms)
+                });
+            }
+        }
+    }
+
     for action in &mut normalized {
         if action.action_type == EditActionType::Cut || !action.enabled {
             continue;
@@ -143,6 +281,7 @@ pub fn validate_and_normalize(
 
     (
         EditPlan {
+            schema_version,
             actions: normalized,
         },
         issues,
@@ -193,6 +332,7 @@ mod tests {
             enabled: true,
             created_at: 0,
             updated_at: 0,
+            payload: None,
         }
     }
 
@@ -200,6 +340,7 @@ mod tests {
     fn rejects_out_of_bounds_actions() {
         let (plan, issues) = validate_and_normalize(
             EditPlan {
+                schema_version: 1,
                 actions: vec![cut("1", 9_000, 12_000)],
             },
             &media(),
@@ -213,6 +354,7 @@ mod tests {
     fn merges_overlapping_cuts() {
         let (plan, issues) = validate_and_normalize(
             EditPlan {
+                schema_version: 1,
                 actions: vec![cut("1", 1_000, 3_000), cut("2", 2_000, 4_000)],
             },
             &media(),
@@ -221,5 +363,20 @@ mod tests {
         assert_eq!(plan.actions[0].start_ms, 1_000);
         assert_eq!(plan.actions[0].end_ms, 4_000);
         assert_eq!(issues.len(), 1);
+    }
+
+    #[test]
+    fn rejects_newer_edit_plan_schema() {
+        let (plan, issues) = validate_and_normalize(
+            EditPlan {
+                schema_version: CURRENT_EDIT_PLAN_SCHEMA_VERSION + 1,
+                actions: vec![],
+            },
+            &media(),
+        );
+        assert!(plan.actions.is_empty());
+        assert!(issues
+            .iter()
+            .any(|item| item.message.contains("schema version")));
     }
 }

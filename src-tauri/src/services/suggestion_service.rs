@@ -7,36 +7,48 @@ pub fn generate_suggestions(
     candidates: &[NonSpeechCandidate],
     analysis_version: &str,
     existing_plan: Option<&EditPlan>,
+    media_duration_ms: u64,
 ) -> Vec<CutSuggestion> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
 
-    candidates
+    let mut bounded = candidates
         .iter()
-        .map(|candidate| {
-            let id = format!(
-                "cut_{}_{}_{}",
-                source_media_id, candidate.start_ms, candidate.end_ms
-            );
+        .filter_map(|candidate| {
+            let start_ms = candidate.start_ms.min(media_duration_ms);
+            let end_ms = candidate.end_ms.min(media_duration_ms);
+            (start_ms < end_ms).then_some((candidate, start_ms, end_ms))
+        })
+        .collect::<Vec<_>>();
+    bounded.sort_by_key(|(_, start_ms, end_ms)| (*start_ms, *end_ms));
+
+    let mut seen_ranges = std::collections::HashSet::new();
+    bounded
+        .into_iter()
+        .filter_map(|(candidate, start_ms, end_ms)| {
+            if !seen_ranges.insert((start_ms, end_ms)) {
+                return None;
+            }
+            let id = format!("cut_{}_{}_{}", source_media_id, start_ms, end_ms);
             let user_overridden = existing_plan.is_some_and(|plan| {
                 plan.actions.iter().any(|action| {
                     action.source == EditActionSource::User
-                        && action.start_ms < candidate.end_ms
-                        && action.end_ms > candidate.start_ms
+                        && action.start_ms < end_ms
+                        && action.end_ms > start_ms
                 })
             });
 
             let enabled = !user_overridden
                 && matches!(candidate.confidence, Confidence::High | Confidence::Medium);
-            CutSuggestion {
+            Some(CutSuggestion {
                 action: EditAction {
                     id,
                     action_type: EditActionType::Cut,
                     source_media_id: source_media_id.to_string(),
-                    start_ms: candidate.start_ms,
-                    end_ms: candidate.end_ms,
+                    start_ms,
+                    end_ms,
                     source: EditActionSource::Local,
                     reason: candidate.reason.clone(),
                     confidence: Some(match candidate.confidence {
@@ -47,10 +59,11 @@ pub fn generate_suggestions(
                     enabled,
                     created_at: now,
                     updated_at: now,
+                    payload: None,
                 },
                 evidence: candidate.evidence.clone(),
                 source_version: analysis_version.to_string(),
-            }
+            })
         })
         .collect()
 }
@@ -89,7 +102,7 @@ mod tests {
                 recommended_padding_ms: 0,
             },
         ];
-        let suggestions = generate_suggestions("media_1", &candidates, "v1", None);
+        let suggestions = generate_suggestions("media_1", &candidates, "v1", None, 10_000);
         assert!(suggestions[0].action.enabled);
         assert!(!suggestions[1].action.enabled);
         assert_eq!(suggestions[0].action.start_ms, 0);
@@ -98,6 +111,7 @@ mod tests {
     #[test]
     fn disables_candidate_overlapping_user_action() {
         let plan = EditPlan {
+            schema_version: 1,
             actions: vec![EditAction {
                 id: "user-1".to_string(),
                 action_type: EditActionType::Keep,
@@ -110,6 +124,7 @@ mod tests {
                 enabled: true,
                 created_at: 0,
                 updated_at: 0,
+                payload: None,
             }],
         };
         let candidate = NonSpeechCandidate {
@@ -120,7 +135,7 @@ mod tests {
             confidence: Confidence::High,
             recommended_padding_ms: 0,
         };
-        let suggestions = generate_suggestions("media_1", &[candidate], "v1", Some(&plan));
+        let suggestions = generate_suggestions("media_1", &[candidate], "v1", Some(&plan), 10_000);
         assert!(!suggestions[0].action.enabled);
     }
 }
