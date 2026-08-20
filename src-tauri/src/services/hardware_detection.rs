@@ -1,6 +1,6 @@
 use crate::models::hardware::RuntimeProfile;
-use sysinfo::System;
 use std::process::Command;
+use sysinfo::System;
 
 pub struct HardwareDetectionService;
 
@@ -9,7 +9,11 @@ impl HardwareDetectionService {
         let mut sys = System::new_all();
         sys.refresh_all();
 
-        let cpu_name = sys.cpus().first().map(|cpu| cpu.brand().to_string()).unwrap_or_else(|| "Unknown CPU".to_string());
+        let cpu_name = sys
+            .cpus()
+            .first()
+            .map(|cpu| cpu.brand().to_string())
+            .unwrap_or_else(|| "Unknown CPU".to_string());
         let cpu_logical_cores = sys.cpus().len() as u32;
         let total_memory_mb = sys.total_memory() / 1024 / 1024;
 
@@ -29,7 +33,11 @@ impl HardwareDetectionService {
         #[cfg(target_os = "windows")]
         {
             if let Ok(output) = Command::new("powershell")
-                .args(["-NoProfile", "-Command", "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"])
+                .args([
+                    "-NoProfile",
+                    "-Command",
+                    "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name",
+                ])
                 .output()
             {
                 if output.status.success() {
@@ -45,20 +53,23 @@ impl HardwareDetectionService {
             }
         }
 
-        let mut supported_acceleration = "CPU_BASIC".to_string();
-        let mut fallback_reason = None;
+        let has_nvidia = gpu_names
+            .iter()
+            .any(|name| name.to_lowercase().contains("nvidia"));
 
-        let has_nvidia = gpu_names.iter().any(|name| name.to_lowercase().contains("nvidia"));
-        
-        if has_nvidia {
-            supported_acceleration = "CUDA".to_string();
+        let (supported_acceleration, fallback_reason) = if has_nvidia {
+            ("CUDA".to_string(), None)
         } else if has_avx2 {
-            supported_acceleration = "CPU_AVX2".to_string();
-            fallback_reason = Some("No NVIDIA GPU detected. Falling back to CPU AVX2.".to_string());
+            (
+                "CPU_AVX2".to_string(),
+                Some("No NVIDIA GPU detected. Falling back to CPU AVX2.".to_string()),
+            )
         } else {
-            supported_acceleration = "CPU_BASIC".to_string();
-            fallback_reason = Some("No GPU or AVX2 detected. Falling back to basic CPU.".to_string());
-        }
+            (
+                "CPU_BASIC".to_string(),
+                Some("No GPU or AVX2 detected. Falling back to basic CPU.".to_string()),
+            )
+        };
 
         RuntimeProfile {
             cpu_name,
@@ -81,11 +92,17 @@ mod tests {
     #[test]
     fn test_hardware_detection() {
         let profile = HardwareDetectionService::detect_profile();
-        
+
         // Basic assertions that should pass on any real machine or CI
-        assert!(profile.cpu_logical_cores > 0, "Should have at least 1 logical core");
+        assert!(
+            profile.cpu_logical_cores > 0,
+            "Should have at least 1 logical core"
+        );
         assert!(profile.total_memory_mb > 0, "Should have some memory");
         assert!(!profile.cpu_name.is_empty(), "Should have a CPU name");
-        assert!(!profile.supported_acceleration.is_empty(), "Should have a supported acceleration value");
+        assert!(
+            !profile.supported_acceleration.is_empty(),
+            "Should have a supported acceleration value"
+        );
     }
 }

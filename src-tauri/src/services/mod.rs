@@ -1,12 +1,12 @@
+pub mod artifact_registry;
 pub mod audio_extraction_service;
+pub mod cache_cleanup;
+pub mod hardware_detection;
 pub mod media_job;
 pub mod project_migration;
 pub mod project_repository;
 pub mod resource_manager;
+pub mod runtime_preset;
+pub mod silence_detector;
 pub mod transcript_parser;
 pub mod whisper_service;
-pub mod silence_detector;
-pub mod artifact_registry;
-pub mod cache_cleanup;
-pub mod hardware_detection;
-pub mod runtime_preset;

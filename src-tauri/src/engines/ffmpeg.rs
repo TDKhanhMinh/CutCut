@@ -20,6 +20,9 @@ pub enum MediaEngineError {
 
     #[error("Process output is not valid UTF-8")]
     InvalidUtf8,
+
+    #[error("Invalid media input: {message}")]
+    InvalidInput { message: String },
 }
 
 // ---------------------------------------------------------------------------
@@ -83,14 +86,9 @@ async fn run_version_check(
         });
     }
 
-    let stdout =
-        String::from_utf8(output.stdout).map_err(|_| MediaEngineError::InvalidUtf8)?;
+    let stdout = String::from_utf8(output.stdout).map_err(|_| MediaEngineError::InvalidUtf8)?;
 
-    let version_line = stdout
-        .lines()
-        .next()
-        .unwrap_or("unknown")
-        .to_string();
+    let version_line = stdout.lines().next().unwrap_or("unknown").to_string();
 
     Ok(MediaBinaryInfo {
         name: display_name.to_string(),
@@ -101,19 +99,13 @@ async fn run_version_check(
 
 /// Run an arbitrary ffprobe command with given args and return stdout as String.
 /// Arguments are passed as an array — never concatenated as a shell string.
-pub async fn run_ffprobe(
-    app: &AppHandle,
-    args: Vec<String>,
-) -> Result<String, MediaEngineError> {
+pub async fn run_ffprobe(app: &AppHandle, args: Vec<String>) -> Result<String, MediaEngineError> {
     run_sidecar_command(app, FFPROBE_SIDECAR, "ffprobe", args).await
 }
 
 /// Run an arbitrary ffmpeg command with given args and return stdout as String.
 /// Arguments are passed as an array — never concatenated as a shell string.
-pub async fn run_ffmpeg(
-    app: &AppHandle,
-    args: Vec<String>,
-) -> Result<String, MediaEngineError> {
+pub async fn run_ffmpeg(app: &AppHandle, args: Vec<String>) -> Result<String, MediaEngineError> {
     run_sidecar_command(app, FFMPEG_SIDECAR, "ffmpeg", args).await
 }
 
@@ -171,19 +163,27 @@ pub async fn read_media_metadata(
     path: String,
 ) -> Result<crate::models::media_info::MediaSourceMetadata, MediaEngineError> {
     let args = vec![
-        "-v".to_string(), "quiet".to_string(),
-        "-print_format".to_string(), "json".to_string(),
+        "-v".to_string(),
+        "quiet".to_string(),
+        "-print_format".to_string(),
+        "json".to_string(),
         "-show_format".to_string(),
         "-show_streams".to_string(),
         path.clone(),
     ];
 
     let output = run_ffprobe(app, args).await?;
-    let json: serde_json::Value = serde_json::from_str(&output)
-        .map_err(|e| MediaEngineError::SpawnFailed { message: format!("Failed to parse ffprobe JSON: {}", e) })?;
+    let json: serde_json::Value =
+        serde_json::from_str(&output).map_err(|e| MediaEngineError::SpawnFailed {
+            message: format!("Failed to parse ffprobe JSON: {}", e),
+        })?;
 
-    let format = json.get("format").ok_or_else(|| MediaEngineError::SpawnFailed { message: "No format section in ffprobe output".into() })?;
-    
+    let format = json
+        .get("format")
+        .ok_or_else(|| MediaEngineError::SpawnFailed {
+            message: "No format section in ffprobe output".into(),
+        })?;
+
     // Parse duration from format
     let duration_sec: f64 = format
         .get("duration")
@@ -191,40 +191,57 @@ pub async fn read_media_metadata(
         .and_then(|s| s.parse().ok())
         .unwrap_or(0.0);
 
-    let streams = json.get("streams").and_then(|v| v.as_array()).ok_or_else(|| MediaEngineError::SpawnFailed { message: "No streams in ffprobe output".into() })?;
+    let streams = json
+        .get("streams")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| MediaEngineError::SpawnFailed {
+            message: "No streams in ffprobe output".into(),
+        })?;
 
     // Find video stream
-    let video_stream = streams.iter().find(|s| s.get("codec_type").and_then(|v| v.as_str()) == Some("video"));
-    
+    let video_stream = streams
+        .iter()
+        .find(|s| s.get("codec_type").and_then(|v| v.as_str()) == Some("video"));
+
     // Find audio stream
-    let audio_stream = streams.iter().find(|s| s.get("codec_type").and_then(|v| v.as_str()) == Some("audio"));
+    let audio_stream = streams
+        .iter()
+        .find(|s| s.get("codec_type").and_then(|v| v.as_str()) == Some("audio"));
 
     let audio_codec = audio_stream
         .and_then(|s| s.get("codec_name"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let mut width = 0;
-    let mut height = 0;
+    let v = video_stream.ok_or_else(|| MediaEngineError::InvalidInput {
+        message: "Selected file does not contain a video stream".into(),
+    })?;
+
+    let width = v.get("width").and_then(|w| w.as_u64()).unwrap_or(0) as u32;
+    let height = v.get("height").and_then(|h| h.as_u64()).unwrap_or(0) as u32;
+    let video_codec = v
+        .get("codec_name")
+        .and_then(|c| c.as_str())
+        .unwrap_or("unknown")
+        .to_string();
     let mut fps = 0.0;
-    let mut video_codec = String::new();
     let mut rotation = 0;
 
-    if let Some(v) = video_stream {
-        width = v.get("width").and_then(|w| w.as_u64()).unwrap_or(0) as u32;
-        height = v.get("height").and_then(|h| h.as_u64()).unwrap_or(0) as u32;
-        video_codec = v.get("codec_name").and_then(|c| c.as_str()).unwrap_or("unknown").to_string();
-        
-        if let Some(r_frame_rate) = v.get("r_frame_rate").and_then(|f| f.as_str()) {
-            fps = parse_frame_rate(r_frame_rate);
-        }
+    if let Some(r_frame_rate) = v.get("r_frame_rate").and_then(|f| f.as_str()) {
+        fps = parse_frame_rate(r_frame_rate);
+    }
 
-        // Try to parse rotation from tags
-        if let Some(tags) = v.get("tags") {
-            if let Some(rot) = tags.get("rotate").and_then(|r| r.as_str()) {
-                rotation = rot.parse().unwrap_or(0);
-            }
+    // Try to parse rotation from tags
+    if let Some(tags) = v.get("tags") {
+        if let Some(rot) = tags.get("rotate").and_then(|r| r.as_str()) {
+            rotation = rot.parse().unwrap_or(0);
         }
+    }
+
+    if duration_sec <= 0.0 || width == 0 || height == 0 || fps <= 0.0 {
+        return Err(MediaEngineError::InvalidInput {
+            message: "Video metadata is incomplete or has zero duration".into(),
+        });
     }
 
     Ok(crate::models::media_info::MediaSourceMetadata {

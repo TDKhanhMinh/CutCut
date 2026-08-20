@@ -47,7 +47,10 @@ impl ArtifactRegistryService {
     /// Invalidate các artifacts dựa vào thay đổi signature của dependency.
     pub fn invalidate(project: &mut Project, trigger_signature: &str) {
         for artifact in project.artifacts.iter_mut() {
-            if artifact.dependencies.contains(&trigger_signature.to_string()) {
+            if artifact
+                .dependencies
+                .contains(&trigger_signature.to_string())
+            {
                 artifact.status = ArtifactStatus::Stale;
             }
         }
@@ -70,7 +73,7 @@ mod tests {
     fn test_artifact_registry() {
         let mut project = Project::default();
         let temp_file = NamedTempFile::new().unwrap();
-        
+
         let record = ArtifactRecord {
             id: "art_1".to_string(),
             artifact_type: ArtifactType::Transcript,
@@ -89,19 +92,21 @@ mod tests {
         // Here we just pass an empty path because relative_path is already absolute in this test
         let resolved = ArtifactRegistryService::resolve(&mut project, "sig_abc", Path::new(""));
         assert!(resolved.is_some());
-        
+
         // Test Invalidate
         ArtifactRegistryService::invalidate(&mut project, "dep_xyz");
         assert_eq!(project.artifacts[0].status, ArtifactStatus::Stale);
 
         // Test Resolve (Stale)
-        let resolved_stale = ArtifactRegistryService::resolve(&mut project, "sig_abc", Path::new(""));
+        let resolved_stale =
+            ArtifactRegistryService::resolve(&mut project, "sig_abc", Path::new(""));
         assert!(resolved_stale.is_none());
 
         // Reset to Valid, test Missing file
         project.artifacts[0].status = ArtifactStatus::Valid;
         drop(temp_file); // Delete the file
-        let resolved_missing = ArtifactRegistryService::resolve(&mut project, "sig_abc", Path::new(""));
+        let resolved_missing =
+            ArtifactRegistryService::resolve(&mut project, "sig_abc", Path::new(""));
         assert!(resolved_missing.is_none());
         assert_eq!(project.artifacts[0].status, ArtifactStatus::Missing);
 

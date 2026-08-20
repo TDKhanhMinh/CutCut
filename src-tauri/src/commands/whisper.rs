@@ -1,7 +1,7 @@
-use tauri::AppHandle;
 use crate::models::project::Transcript;
-use crate::services::whisper_service::WhisperService;
 use crate::services::transcript_parser::TranscriptParser;
+use crate::services::whisper_service::WhisperService;
+use tauri::AppHandle;
 
 #[tauri::command]
 pub async fn transcribe_audio(

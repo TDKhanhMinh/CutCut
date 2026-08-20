@@ -1,9 +1,9 @@
-use crate::models::project::Project;
 use crate::models::artifact::ArtifactType;
 use crate::models::artifact_registry::ArtifactStatus;
-use std::path::Path;
+use crate::models::project::Project;
+use anyhow::{bail, Result};
 use std::fs;
-use anyhow::{Result, bail};
+use std::path::Path;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheRetentionClass {
@@ -15,10 +15,10 @@ pub enum CacheRetentionClass {
 
 pub fn get_retention_class(artifact_type: &ArtifactType) -> CacheRetentionClass {
     match artifact_type {
-        ArtifactType::Transcript 
-        | ArtifactType::SilenceAnalysis 
-        | ArtifactType::Preview 
-        | ArtifactType::Caption 
+        ArtifactType::Transcript
+        | ArtifactType::SilenceAnalysis
+        | ArtifactType::Preview
+        | ArtifactType::Caption
         | ArtifactType::ExtractedAudio => CacheRetentionClass::Recomputable,
     }
 }
@@ -30,7 +30,7 @@ impl CacheCleanupService {
     pub fn calculate_reclaimable_size<P: AsRef<Path>>(project: &Project, project_root: P) -> u64 {
         let mut total_size = 0;
         let root = project_root.as_ref();
-        
+
         for artifact in &project.artifacts {
             if get_retention_class(&artifact.artifact_type) == CacheRetentionClass::Recomputable {
                 let abs_path = root.join(&artifact.relative_path);
@@ -45,10 +45,13 @@ impl CacheCleanupService {
     }
 
     /// Xóa vật lý các Recomputable artifacts và cập nhật Registry thành Missing.
-    pub fn clear_recomputable_cache<P: AsRef<Path>>(project: &mut Project, project_root: P) -> Result<u64> {
+    pub fn clear_recomputable_cache<P: AsRef<Path>>(
+        project: &mut Project,
+        project_root: P,
+    ) -> Result<u64> {
         let mut freed_size = 0;
         let root = project_root.as_ref();
-        
+
         for artifact in &mut project.artifacts {
             if get_retention_class(&artifact.artifact_type) == CacheRetentionClass::Recomputable {
                 let abs_path = root.join(&artifact.relative_path);
@@ -69,7 +72,7 @@ impl CacheCleanupService {
     pub fn cleanup_orphans<P: AsRef<Path>>(project: &Project, project_root: P) -> Result<u64> {
         let root = project_root.as_ref();
         let artifacts_dir = root.join(".cutcut").join("artifacts");
-        
+
         if !artifacts_dir.exists() {
             return Ok(0);
         }
@@ -123,31 +126,35 @@ impl CacheCleanupService {
 mod tests {
     use super::*;
     use crate::models::artifact_registry::ArtifactRecord;
-    use tempfile::tempdir;
     use std::io::Write;
+    use tempfile::tempdir;
 
     #[test]
     fn test_cache_cleanup_lifecycle() {
         let dir = tempdir().unwrap();
         let root = dir.path();
-        
+
         // Setup .cutcut/artifacts directory
         let artifacts_dir = root.join(".cutcut").join("artifacts");
         fs::create_dir_all(&artifacts_dir).unwrap();
-        
+
         // Create 2 files: one is in registry (recomputable), one is orphan
         let registered_file = artifacts_dir.join("reg.bin");
         let orphan_file = artifacts_dir.join("orphan.bin");
-        
+
         let mut f1 = fs::File::create(&registered_file).unwrap();
         f1.write_all(b"12345").unwrap(); // 5 bytes
-        
+
         let mut f2 = fs::File::create(&orphan_file).unwrap();
         f2.write_all(b"1234567890").unwrap(); // 10 bytes
 
         let mut project = Project::default();
-        let relative_path = Path::new(".cutcut").join("artifacts").join("reg.bin").to_string_lossy().to_string();
-        
+        let relative_path = Path::new(".cutcut")
+            .join("artifacts")
+            .join("reg.bin")
+            .to_string_lossy()
+            .to_string();
+
         project.artifacts.push(ArtifactRecord {
             id: "1".to_string(),
             artifact_type: ArtifactType::Transcript, // Recomputable

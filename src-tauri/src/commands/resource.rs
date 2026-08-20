@@ -1,6 +1,6 @@
-use tauri::AppHandle;
 use crate::models::resource::{ResourceItem, ResourceState};
 use crate::services::resource_manager::ResourceManager;
+use tauri::AppHandle;
 
 #[tauri::command]
 pub fn get_models() -> Vec<ResourceItem> {
@@ -14,7 +14,9 @@ pub fn get_model_state(app: AppHandle, item: ResourceItem) -> Result<ResourceSta
 
 #[tauri::command]
 pub async fn download_model(app: AppHandle, id: String) -> Result<(), String> {
-    ResourceManager::download_resource(app, id).await.map_err(|e| e.to_string())
+    ResourceManager::download_resource(app, id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

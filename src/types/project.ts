@@ -1,82 +1,78 @@
-import { MediaSourceMetadata } from "../components/media/MediaImporter";
-import { ArtifactRecord } from './artifact';
+import type { ArtifactRecord } from "./artifact";
+import type { MediaSourceMetadata } from "@/types/media";
 
 export const CURRENT_SCHEMA_VERSION = 1;
 
+/** Canonical Project JSON contract. All timestamps use milliseconds. */
 export interface Project {
-    id: string;
-    schemaVersion: number;
-    createdAt: number;
-    updatedAt: number;
-    media: MediaSource[];
-    transcript: Transcript | null;
-    edits: EditTimeline;
-    captions: CaptionSettings | null;
-    settings: OutputSettings;
-    artifacts: ArtifactRecord[];
+  id: string;
+  schemaVersion: number;
+  createdAt: number;
+  updatedAt: number;
+  media: MediaSource[];
+  transcript: Transcript | null;
+  editPlan: EditPlan;
+  captions: CaptionSettings | null;
+  settings: OutputSettings;
+  artifacts: ArtifactRecord[];
 }
 
 export interface MediaSource {
-    id: string;
-    path: string;
-    metadata: MediaSourceMetadata;
+  id: string;
+  path: string;
+  metadata: MediaSourceMetadata;
 }
 
 export interface Transcript {
-    segments: TranscriptSegment[];
+  id: string;
+  sourceId: string;
+  modelId: string;
+  language: string;
+  generatedAt: number;
+  segments: TranscriptSegment[];
 }
 
 export interface TranscriptSegment {
-    id: string;
-    text: string;
-    startMs: number;
-    endMs: number;
-    speaker: string | null;
-    isFiller: boolean;
+  id: string;
+  text: string;
+  originalText?: string;
+  startMs: number;
+  endMs: number;
+  speaker: string | null;
+  isFiller: boolean;
+  isModified?: boolean;
 }
 
-export interface EditTimeline {
-    actions: EditAction[];
+export interface EditPlan {
+  actions: EditAction[];
 }
 
-export type EditAction = 
-    | CutAction
-    | KeepAction
-    | MuteAction;
+export type EditActionType = "cut" | "keep" | "mute";
+export type EditActionSource = "local" | "ai" | "user";
 
-export interface CutAction {
-    type: 'Cut';
-    id: string;
-    sourceMediaId: string;
-    startMs: number;
-    endMs: number;
-}
-
-export interface KeepAction {
-    type: 'Keep';
-    id: string;
-    sourceMediaId: string;
-    startMs: number;
-    endMs: number;
-}
-
-export interface MuteAction {
-    type: 'Mute';
-    id: string;
-    sourceMediaId: string;
-    startMs: number;
-    endMs: number;
+export interface EditAction {
+  id: string;
+  type: EditActionType;
+  sourceMediaId: string;
+  startMs: number;
+  endMs: number;
+  source: EditActionSource;
+  reason: string;
+  confidence: number | null;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface CaptionSettings {
-    style: string;
-    fontSize: number;
-    primaryColor: string;
-    strokeColor: string;
+  style: string;
+  fontSize: number;
+  primaryColor: string;
+  strokeColor: string;
 }
 
 export interface OutputSettings {
-    aspectRatio: string;
-    targetResolution: number;
-    fps: number;
+  aspectRatio: string;
+  targetResolution: number;
+  fps: number;
 }

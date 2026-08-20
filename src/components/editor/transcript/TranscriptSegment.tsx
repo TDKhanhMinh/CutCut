@@ -38,7 +38,7 @@ export const TranscriptSegment = memo(
         inputRef.current.focus();
         inputRef.current.setSelectionRange(
           inputRef.current.value.length,
-          inputRef.current.value.length
+          inputRef.current.value.length,
         );
       }
     }, [isEditing]);
@@ -74,10 +74,10 @@ export const TranscriptSegment = memo(
     return (
       <div
         className={cn(
-          "flex gap-4 p-2 mx-2 my-1 rounded-md transition-colors cursor-pointer group h-full outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset",
+          "group mx-2 my-1 flex h-full cursor-pointer gap-4 rounded-md p-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary",
           isActive ? "bg-primary/10" : "hover:bg-muted/50 focus-visible:bg-muted/50",
-          isSelected && "ring-2 ring-primary ring-inset",
-          isCut && "opacity-50 line-through"
+          isSelected && "ring-2 ring-inset ring-primary",
+          isCut && "line-through opacity-50",
         )}
         tabIndex={0}
         onKeyDown={(e) => {
@@ -93,7 +93,7 @@ export const TranscriptSegment = memo(
           if (!isCut) setIsEditing(true);
         }}
       >
-        <div className="w-12 shrink-0 text-xs text-muted-foreground select-none font-mono mt-1 group-hover:text-foreground transition-colors">
+        <div className="mt-1 w-12 shrink-0 select-none font-mono text-xs text-muted-foreground transition-colors group-hover:text-foreground">
           {formatTimestamp(segment.startMs)}
         </div>
         <div className="flex-1 text-sm md:text-base">
@@ -104,15 +104,15 @@ export const TranscriptSegment = memo(
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={handleSave}
               onKeyDown={handleKeyDown}
-              className="w-full bg-background border border-input rounded-sm p-1 outline-none focus-visible:ring-1 focus-visible:ring-primary min-h-[40px] resize-none overflow-hidden"
+              className="min-h-[40px] w-full resize-none overflow-hidden rounded-sm border border-input bg-background p-1 outline-none focus-visible:ring-1 focus-visible:ring-primary"
               rows={Math.max(1, Math.ceil(editValue.length / 50))}
             />
           ) : (
             <span
               className={cn(
-                "leading-relaxed block",
-                (isModified || segment.isModified) && "text-amber-500 font-medium",
-                !isCut && "group-hover:opacity-90"
+                "block leading-relaxed",
+                (isModified || segment.isModified) && "font-medium text-amber-500",
+                !isCut && "group-hover:opacity-90",
               )}
               title="Double click to edit"
             >
@@ -133,6 +133,6 @@ export const TranscriptSegment = memo(
       prevProps.segment.text === nextProps.segment.text &&
       prevProps.segment.isModified === nextProps.segment.isModified
     );
-  }
+  },
 );
 TranscriptSegment.displayName = "TranscriptSegment";

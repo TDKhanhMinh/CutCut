@@ -182,7 +182,7 @@ mod tests {
         // It shouldn't panic, and intervals remain empty.
         let line2 = "some random ffmpeg log";
         parse_silence_line(line2, &mut current_start, &mut intervals);
-        
+
         assert_eq!(intervals.len(), 0);
         assert_eq!(current_start, Some(1.25)); // Keeps holding the start until we get an end
     }

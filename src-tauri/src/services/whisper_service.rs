@@ -1,9 +1,9 @@
+use crate::models::whisper::WhisperResult;
 use anyhow::{Context, Result};
+use std::fs;
 use std::path::Path;
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
-use std::fs;
-use crate::models::whisper::WhisperResult;
 
 pub struct WhisperService;
 
@@ -23,12 +23,14 @@ impl WhisperService {
         if !model_path_obj.exists() {
             anyhow::bail!("Model file does not exist: {}", model_path);
         }
-        
+
         let output_base_path = audio_path_obj.with_extension("whisper_out");
         let json_output_path = output_base_path.with_extension("whisper_out.json");
 
         let shell = app.shell();
-        let command = shell.sidecar("whisper").context("Failed to create sidecar command. Is whisper configured in externalBin?")?;
+        let command = shell
+            .sidecar("whisper")
+            .context("Failed to create sidecar command. Is whisper configured in externalBin?")?;
 
         let args = vec![
             "-m".to_string(),
@@ -56,14 +58,17 @@ impl WhisperService {
         }
 
         if !json_output_path.exists() {
-            anyhow::bail!("Whisper completed but JSON output was not found at {:?}", json_output_path);
+            anyhow::bail!(
+                "Whisper completed but JSON output was not found at {:?}",
+                json_output_path
+            );
         }
 
-        let json_content = fs::read_to_string(&json_output_path)
-            .context("Failed to read whisper JSON output")?;
+        let json_content =
+            fs::read_to_string(&json_output_path).context("Failed to read whisper JSON output")?;
 
-        let result: WhisperResult = serde_json::from_str(&json_content)
-            .context("Failed to parse whisper JSON output")?;
+        let result: WhisperResult =
+            serde_json::from_str(&json_content).context("Failed to parse whisper JSON output")?;
 
         let _ = fs::remove_file(&json_output_path);
 

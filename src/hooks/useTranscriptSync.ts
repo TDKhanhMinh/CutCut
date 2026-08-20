@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { TranscriptSegment } from '@/types/transcript';
+import { useMemo } from "react";
+import { TranscriptSegment } from "@/types/transcript";
 
 /**
  * Hook to find the active transcript segment based on current playback time.
@@ -7,7 +7,7 @@ import { TranscriptSegment } from '@/types/transcript';
  */
 export const useTranscriptSync = (
   segments: TranscriptSegment[],
-  currentTimeMs: number
+  currentTimeMs: number,
 ): string | null => {
   return useMemo(() => {
     if (!segments || segments.length === 0) return null;

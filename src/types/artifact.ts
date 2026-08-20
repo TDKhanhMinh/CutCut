@@ -1,19 +1,15 @@
-export type ArtifactType = 
-  | 'transcript'
-  | 'silenceAnalysis'
-  | 'preview'
-  | 'caption'
-  | 'extractedAudio';
+export type ArtifactType =
+  "transcript" | "silenceAnalysis" | "preview" | "caption" | "extractedAudio";
 
 export interface ArtifactSignature {
   artifactType: ArtifactType;
   artifactVersion: number;
   signature: string;
   dependsOn: string[];
-  inputs: Record<string, any>;
+  inputs: Record<string, unknown>;
 }
 
-export type ArtifactStatus = 'valid' | 'stale' | 'missing' | 'building' | 'failed';
+export type ArtifactStatus = "valid" | "stale" | "missing" | "building" | "failed";
 
 export interface ArtifactRecord {
   id: string;

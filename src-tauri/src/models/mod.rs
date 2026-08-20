@@ -1,10 +1,11 @@
-pub mod media_info;
-pub mod media_job;
-pub mod project;
-pub mod silence;
-pub mod resource;
-pub mod whisper;
 pub mod artifact;
 pub mod artifact_registry;
+pub mod edit_plan;
 pub mod hardware;
+pub mod media_info;
+pub mod media_job;
 pub mod preset;
+pub mod project;
+pub mod resource;
+pub mod silence;
+pub mod whisper;

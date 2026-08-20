@@ -29,6 +29,8 @@ export const TranscriptPanel = ({
 
   const segments = useMemo(() => transcript?.segments || [], [transcript]);
 
+  // TanStack Virtual exposes imperative methods that React Compiler cannot memoize safely.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: segments.length,
     getScrollElement: () => parentRef.current,
@@ -59,7 +61,7 @@ export const TranscriptPanel = ({
 
   if (!transcript || segments.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground p-8 text-center border-l bg-muted/20">
+      <div className="flex h-full items-center justify-center border-l bg-muted/20 p-8 text-center text-muted-foreground">
         <div className="flex flex-col items-center gap-2">
           <p className="text-sm">No transcript available.</p>
           <p className="text-xs">Run AI Transcription to generate segments.</p>
@@ -69,19 +71,17 @@ export const TranscriptPanel = ({
   }
 
   return (
-    <div className="flex flex-col h-full w-full max-w-sm border-l bg-background shadow-sm shrink-0 relative">
-      <div className="p-4 border-b shrink-0 flex items-center justify-between">
-        <h3 className="font-semibold text-sm">Transcript</h3>
-        <span className="text-xs text-muted-foreground">
-          {segments.length} segments
-        </span>
+    <div className="relative flex h-full w-full max-w-sm shrink-0 flex-col border-l bg-background shadow-sm">
+      <div className="flex shrink-0 items-center justify-between border-b p-4">
+        <h3 className="text-sm font-semibold">Transcript</h3>
+        <span className="text-xs text-muted-foreground">{segments.length} segments</span>
       </div>
-      
+
       {!isAutoScrollEnabled && activeSegmentId && (
-        <div className="absolute top-16 right-4 z-10">
+        <div className="absolute right-4 top-16 z-10">
           <button
             onClick={() => setIsAutoScrollEnabled(true)}
-            className="bg-primary/90 text-primary-foreground px-3 py-1.5 rounded-full text-xs shadow-md hover:bg-primary transition-colors cursor-pointer"
+            className="cursor-pointer rounded-full bg-primary/90 px-3 py-1.5 text-xs text-primary-foreground shadow-md transition-colors hover:bg-primary"
           >
             Resume Auto-scroll
           </button>

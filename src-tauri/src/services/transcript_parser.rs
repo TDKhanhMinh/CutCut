@@ -17,7 +17,7 @@ impl TranscriptParser {
         for seg in whisper_result.transcription {
             let start_ms = Self::parse_timestamp(&seg.timestamps.from).unwrap_or(0);
             let mut end_ms = Self::parse_timestamp(&seg.timestamps.to).unwrap_or(0);
-            
+
             // Validate timestamps
             if end_ms < start_ms {
                 end_ms = start_ms;
@@ -64,7 +64,7 @@ impl TranscriptParser {
         if parts.len() != 2 {
             anyhow::bail!("Invalid timestamp format: {}", ts);
         }
-        
+
         let time_parts: Vec<&str> = parts[0].split(':').collect();
         if time_parts.len() != 3 {
             anyhow::bail!("Invalid time format: {}", parts[0]);
@@ -82,27 +82,31 @@ impl TranscriptParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::whisper::{WhisperTimestamp, WhisperOffset, WhisperSegment};
+    use crate::models::whisper::{WhisperOffset, WhisperSegment, WhisperTimestamp};
 
     #[test]
     fn test_parse_timestamp() {
-        assert_eq!(TranscriptParser::parse_timestamp("00:00:01,000").unwrap(), 1000);
-        assert_eq!(TranscriptParser::parse_timestamp("01:02:03,456").unwrap(), 3723456);
+        assert_eq!(
+            TranscriptParser::parse_timestamp("00:00:01,000").unwrap(),
+            1000
+        );
+        assert_eq!(
+            TranscriptParser::parse_timestamp("01:02:03,456").unwrap(),
+            3723456
+        );
     }
-    
+
     #[test]
     fn test_parse_whisper_result() {
         let result = WhisperResult {
-            transcription: vec![
-                WhisperSegment {
-                    timestamps: WhisperTimestamp {
-                        from: "00:00:01,000".to_string(),
-                        to: "00:00:02,500".to_string(),
-                    },
-                    offsets: WhisperOffset { from: 0, to: 0 },
-                    text: "   Xin chào, đây là tiếng Việt!   ".to_string(),
-                }
-            ]
+            transcription: vec![WhisperSegment {
+                timestamps: WhisperTimestamp {
+                    from: "00:00:01,000".to_string(),
+                    to: "00:00:02,500".to_string(),
+                },
+                offsets: WhisperOffset { from: 0, to: 0 },
+                text: "   Xin chào, đây là tiếng Việt!   ".to_string(),
+            }],
         };
 
         let transcript = TranscriptParser::parse(result, "src1", "model1", "vi").unwrap();

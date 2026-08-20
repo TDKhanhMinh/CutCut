@@ -64,7 +64,7 @@ impl AudioExtractionService {
     pub fn cleanup_stt_audio(app: &AppHandle, temp_path: String) -> Result<()> {
         let path = Path::new(&temp_path);
         let dir = Self::get_temp_audio_dir(app)?;
-        
+
         // Safety check to ensure we only delete within temp_audio
         if path.starts_with(dir) && path.exists() {
             fs::remove_file(path)?;

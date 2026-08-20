@@ -19,7 +19,11 @@ impl RuntimePresetService {
                 target_model_id: user_override.clone(),
                 target_backend,
                 is_model_installed: is_installed,
-                fallback_reason: if !is_installed { Some(format!("Model {} is not installed.", user_override)) } else { None },
+                fallback_reason: if !is_installed {
+                    Some(format!("Model {} is not installed.", user_override))
+                } else {
+                    None
+                },
                 tradeoff_description: "Custom settings overridden by user.".to_string(),
             };
         }
@@ -43,19 +47,31 @@ impl RuntimePresetService {
         let mut fallback_reason = None;
 
         if !is_model_installed {
-            let fallback_candidates = vec!["ggml-tiny", "ggml-base", "ggml-small", "ggml-medium", "ggml-large-v3"];
+            let fallback_candidates = vec![
+                "ggml-tiny",
+                "ggml-base",
+                "ggml-small",
+                "ggml-medium",
+                "ggml-large-v3",
+            ];
             let mut found_fallback = false;
             for candidate in fallback_candidates {
                 if installed_model_ids.contains(&candidate.to_string()) {
                     target_model_id = candidate.to_string();
                     is_model_installed = true;
-                    fallback_reason = Some(format!("Ideal model {} is not installed, falling back to {}.", ideal_model, candidate));
+                    fallback_reason = Some(format!(
+                        "Ideal model {} is not installed, falling back to {}.",
+                        ideal_model, candidate
+                    ));
                     found_fallback = true;
                     break;
                 }
             }
             if !found_fallback {
-                fallback_reason = Some(format!("Ideal model {} is not installed and no fallback available.", ideal_model));
+                fallback_reason = Some(format!(
+                    "Ideal model {} is not installed and no fallback available.",
+                    ideal_model
+                ));
             }
         }
 
@@ -89,9 +105,10 @@ mod tests {
         };
 
         let installed = vec!["ggml-tiny".to_string(), "ggml-small".to_string()];
-        
-        let res = RuntimePresetService::resolve_preset(PresetType::Balanced, &profile, &installed, None);
-        
+
+        let res =
+            RuntimePresetService::resolve_preset(PresetType::Balanced, &profile, &installed, None);
+
         assert_eq!(res.preset, PresetType::Balanced);
         assert_eq!(res.target_model_id, "ggml-small");
         assert_eq!(res.target_backend, "CPU_AVX2");
@@ -115,13 +132,17 @@ mod tests {
 
         // Only tiny is installed
         let installed = vec!["ggml-tiny".to_string()];
-        
-        let res = RuntimePresetService::resolve_preset(PresetType::Accurate, &profile, &installed, None);
-        
+
+        let res =
+            RuntimePresetService::resolve_preset(PresetType::Accurate, &profile, &installed, None);
+
         assert_eq!(res.preset, PresetType::Accurate);
         // It should fallback to tiny since medium is not installed
         assert_eq!(res.target_model_id, "ggml-tiny");
         assert!(res.is_model_installed);
-        assert!(res.fallback_reason.unwrap().contains("falling back to ggml-tiny"));
+        assert!(res
+            .fallback_reason
+            .unwrap()
+            .contains("falling back to ggml-tiny"));
     }
 }

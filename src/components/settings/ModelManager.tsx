@@ -60,19 +60,22 @@ export function ModelManager() {
   };
 
   useEffect(() => {
-    const unlistenProgress = listen("resource-download-progress", (event: { payload: { id: string; progress: number; downloaded: number; total: number } }) => {
-      const payload = event.payload;
-      setStates((prev) => ({
-        ...prev,
-        [payload.id]: {
-          Downloading: {
-            progress: payload.progress,
-            downloaded: payload.downloaded,
-            total: payload.total,
+    const unlistenProgress = listen(
+      "resource-download-progress",
+      (event: { payload: { id: string; progress: number; downloaded: number; total: number } }) => {
+        const payload = event.payload;
+        setStates((prev) => ({
+          ...prev,
+          [payload.id]: {
+            Downloading: {
+              progress: payload.progress,
+              downloaded: payload.downloaded,
+              total: payload.total,
+            },
           },
-        },
-      }));
-    });
+        }));
+      },
+    );
 
     const unlistenFinished = listen("resource-download-finished", () => {
       fetchModels(); // Refresh states
@@ -129,11 +132,7 @@ export function ModelManager() {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger 
-        render={
-          <Button variant="outline" size="sm" className="gap-2" />
-        }
-      >
+      <DialogTrigger render={<Button variant="outline" size="sm" className="gap-2" />}>
         <BrainCircuit className="h-4 w-4 text-primary" />
         <span className="hidden sm:inline">AI Models</span>
       </DialogTrigger>
@@ -145,12 +144,12 @@ export function ModelManager() {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4 mt-4">
+        <div className="mt-4 flex flex-col gap-4">
           {models.map((m) => {
             const state = states[m.id] || "NotInstalled";
             const isInstalled = state === "Installed";
             const isDownloading = typeof state === "object" && "Downloading" in state;
-            const progress = isDownloading ? (state.Downloading.progress * 100) : 0;
+            const progress = isDownloading ? state.Downloading.progress * 100 : 0;
             const isActive = activeModel === m.id;
 
             return (
@@ -162,11 +161,9 @@ export function ModelManager() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="font-medium flex items-center gap-2">
+                    <span className="flex items-center gap-2 font-medium">
                       {m.name}
-                      {isActive && (
-                        <CheckCircle2 className="h-4 w-4 text-primary" />
-                      )}
+                      {isActive && <CheckCircle2 className="h-4 w-4 text-primary" />}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       Kích thước: {formatSize(m.size_bytes)}
@@ -186,11 +183,7 @@ export function ModelManager() {
                       </Button>
                     )}
                     {isInstalled && !isActive && (
-                      <Button
-                        size="sm"
-                        onClick={() => handleSetActive(m.id)}
-                        className="gap-2"
-                      >
+                      <Button size="sm" onClick={() => handleSetActive(m.id)} className="gap-2">
                         <PlayCircle className="h-4 w-4" />
                         Dùng
                       </Button>

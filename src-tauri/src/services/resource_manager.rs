@@ -1,14 +1,14 @@
+use crate::models::resource::{ResourceItem, ResourceManifest, ResourceState, ResourceType};
 use anyhow::{Context, Result};
+use futures_util::StreamExt;
+use reqwest::Client;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager, Emitter};
-use reqwest::Client;
-use futures_util::StreamExt;
-use sha2::{Sha256, Digest};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use crate::models::resource::{ResourceItem, ResourceType, ResourceState, ResourceManifest};
 
 pub struct ResourceManager;
 
@@ -21,8 +21,10 @@ impl ResourceManager {
                 name: "Fast (Tiny)".to_string(),
                 version: "v1.9.2".to_string(),
                 size_bytes: 77691713,
-                url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin".to_string(),
-                checksum: "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21".to_string(),
+                url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"
+                    .to_string(),
+                checksum: "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21"
+                    .to_string(),
                 compatibility: None,
             },
             ResourceItem {
@@ -31,8 +33,10 @@ impl ResourceManager {
                 name: "Balanced (Base)".to_string(),
                 version: "v1.9.2".to_string(),
                 size_bytes: 147951465,
-                url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin".to_string(),
-                checksum: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe".to_string(),
+                url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+                    .to_string(),
+                checksum: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
+                    .to_string(),
                 compatibility: None,
             },
             ResourceItem {
@@ -41,15 +45,21 @@ impl ResourceManager {
                 name: "Accurate (Small)".to_string(),
                 version: "v1.9.2".to_string(),
                 size_bytes: 487601967,
-                url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin".to_string(),
-                checksum: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b".to_string(),
+                url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
+                    .to_string(),
+                checksum: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"
+                    .to_string(),
                 compatibility: None,
-            }
+            },
         ]
     }
 
     pub fn get_models_dir(app: &AppHandle) -> Result<PathBuf> {
-        let dir = app.path().app_local_data_dir().context("Failed to get local data dir")?.join("models");
+        let dir = app
+            .path()
+            .app_local_data_dir()
+            .context("Failed to get local data dir")?
+            .join("models");
         if !dir.exists() {
             fs::create_dir_all(&dir)?;
         }
@@ -82,7 +92,10 @@ impl ResourceManager {
 
     pub async fn download_resource(app: AppHandle, id: String) -> Result<()> {
         let catalog = Self::get_catalog();
-        let item = catalog.into_iter().find(|i| i.id == id).context("Resource not found")?;
+        let item = catalog
+            .into_iter()
+            .find(|i| i.id == id)
+            .context("Resource not found")?;
 
         let models_dir = Self::get_models_dir(&app)?;
         let tmp_path = models_dir.join(format!("{}.tmp", item.id));
@@ -109,17 +122,23 @@ impl ResourceManager {
             downloaded += chunk.len() as u64;
 
             let progress = downloaded as f64 / total_size as f64;
-            let _ = app.emit("resource-download-progress", serde_json::json!({
-                "id": item.id,
-                "progress": progress,
-                "downloaded": downloaded,
-                "total": total_size
-            }));
+            let _ = app.emit(
+                "resource-download-progress",
+                serde_json::json!({
+                    "id": item.id,
+                    "progress": progress,
+                    "downloaded": downloaded,
+                    "total": total_size
+                }),
+            );
         }
 
         let hash_bytes = hasher.finalize();
-        let hash_result = hash_bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>();
-        
+        let hash_result = hash_bytes
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>();
+
         if hash_result != item.checksum {
             let _ = fs::remove_file(&tmp_path);
             anyhow::bail!("Checksum mismatch!");
@@ -131,12 +150,18 @@ impl ResourceManager {
             id: item.id.clone(),
             checksum: item.checksum.clone(),
             size_bytes: item.size_bytes,
-            installed_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            installed_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
         };
 
         fs::write(&manifest_path, serde_json::to_string(&manifest)?)?;
 
-        let _ = app.emit("resource-download-finished", serde_json::json!({ "id": item.id }));
+        let _ = app.emit(
+            "resource-download-finished",
+            serde_json::json!({ "id": item.id }),
+        );
 
         Ok(())
     }
