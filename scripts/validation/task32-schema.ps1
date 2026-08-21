@@ -31,6 +31,10 @@ foreach ($required in @(
   "CREATE UNIQUE INDEX IF NOT EXISTS ai_usage_user_request_id",
   "GRANT EXECUTE ON FUNCTION public\.check_ai_quota\(uuid\) TO service_role",
   "GRANT EXECUTE ON FUNCTION public\.consume_ai_quota\(",
+  "REVOKE INSERT, UPDATE, DELETE ON TABLE",
+  "REVOKE ALL ON FUNCTION public\.reserve_credits\(uuid, integer, text\)",
+  "REVOKE ALL ON FUNCTION public\.commit_credits\(uuid, integer, text\)",
+  "REVOKE ALL ON FUNCTION public\.refund_credits\(uuid, text\)",
   "REVOKE ALL ON FUNCTION public.handle_new_user()",
   "USING \(\(select auth\.uid\(\)\) = user_id\)"
 )) {
