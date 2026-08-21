@@ -64,13 +64,13 @@ export const useEntitlementStore = create<EntitlementState>((set, get) => ({
 
       set({ plan, capabilities, expiresAt, loading: false });
 
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to fetch entitlements:', e);
       // Offline fallback: FREE plan, local features remain available
       set({
         plan: 'FREE',
         capabilities: [],
-        error: e.message || 'Failed to fetch entitlements',
+        error: e instanceof Error ? e.message : 'Failed to fetch entitlements',
         loading: false,
       });
     }

@@ -32,8 +32,8 @@ export function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
                 if (error) throw error;
                 onOpenChange(false);
             }
-        } catch (err: any) {
-            setError(err.message || "Authentication failed");
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Authentication failed");
         } finally {
             setLoading(false);
         }

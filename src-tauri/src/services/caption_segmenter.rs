@@ -1,5 +1,4 @@
-use crate::models::project::{CaptionCue, Transcript, TranscriptSegment};
-use uuid::Uuid;
+use crate::models::project::{CaptionCue, Transcript};
 
 // V1 Constraints
 pub const MAX_CHARS_PER_CUE: usize = 84;
@@ -30,26 +29,25 @@ pub fn generate_cues(transcript: &Transcript, existing_cues: &[CaptionCue]) -> V
         let segment_duration = segment.end_ms.saturating_sub(segment.start_ms);
 
         let words_split: Vec<&str> = text.split_whitespace().collect();
-        
+
         let mut current_char_offset = 0;
-        
+
         for w in words_split {
             let w_len = w.chars().count() as u64;
-            
-            let start_ms = if total_chars > 0 {
-                segment.start_ms + (current_char_offset * segment_duration / total_chars)
-            } else {
-                segment.start_ms
-            };
-            
-            let end_ms = if total_chars > 0 {
-                segment.start_ms + ((current_char_offset + w_len) * segment_duration / total_chars)
-            } else {
-                segment.end_ms
-            };
+
+            let start_ms = segment.start_ms
+                + (current_char_offset * segment_duration)
+                    .checked_div(total_chars)
+                    .unwrap_or(0);
+
+            let end_ms = segment.start_ms
+                + ((current_char_offset + w_len) * segment_duration)
+                    .checked_div(total_chars)
+                    .unwrap_or(segment.end_ms.saturating_sub(segment.start_ms));
 
             let has_strong_punct = w.ends_with('.') || w.ends_with('?') || w.ends_with('!');
-            let has_weak_punct = w.ends_with(',') || w.ends_with(':') || w.ends_with(';') || w.ends_with('…');
+            let has_weak_punct =
+                w.ends_with(',') || w.ends_with(':') || w.ends_with(';') || w.ends_with('…');
 
             all_words.push(WordInfo {
                 text: w.to_string(),
@@ -83,10 +81,7 @@ pub fn generate_cues(transcript: &Transcript, existing_cues: &[CaptionCue]) -> V
         current_words.push(word);
         current_chars += word_len + 1;
 
-        if w_strong {
-            generated_cues.push(flush_cue(&mut current_words));
-            current_chars = 0;
-        } else if w_weak && current_chars > IDEAL_CHARS_PER_LINE {
+        if w_strong || (w_weak && current_chars > IDEAL_CHARS_PER_LINE) {
             generated_cues.push(flush_cue(&mut current_words));
             current_chars = 0;
         }
@@ -98,14 +93,14 @@ pub fn generate_cues(transcript: &Transcript, existing_cues: &[CaptionCue]) -> V
 
     // Pass 2: Enforce MIN_DURATION_MS without overlapping
     for i in 0..generated_cues.len() {
-        let duration = generated_cues[i].end_ms.saturating_sub(generated_cues[i].start_ms);
+        let duration = generated_cues[i]
+            .end_ms
+            .saturating_sub(generated_cues[i].start_ms);
         if duration < MIN_DURATION_MS {
             let mut new_end = generated_cues[i].start_ms + MIN_DURATION_MS;
             // clamp to next cue's start
-            if i + 1 < generated_cues.len() {
-                if new_end > generated_cues[i + 1].start_ms {
-                    new_end = generated_cues[i + 1].start_ms;
-                }
+            if i + 1 < generated_cues.len() && new_end > generated_cues[i + 1].start_ms {
+                new_end = generated_cues[i + 1].start_ms;
             }
             // only update if new_end is greater
             if new_end > generated_cues[i].end_ms {
@@ -114,23 +109,49 @@ pub fn generate_cues(transcript: &Transcript, existing_cues: &[CaptionCue]) -> V
         }
     }
 
-    // Pass 3: Preserve manual modifications
-    // If there is an existing cue with is_manual_modified = true, and its ID matches or 
-    // it perfectly overlaps, we restore it to prevent silent data loss.
+    // Pass 3: Preserve manual modifications. Match by stable ID first, then by
+    // source linkage and timing overlap so a harmless re-segmentation cannot
+    // silently overwrite a user's caption text.
+    let mut matched_manual_ids = std::collections::HashSet::new();
     for new_cue in generated_cues.iter_mut() {
-        if let Some(existing) = existing_cues.iter().find(|c| c.id == new_cue.id && c.is_manual_modified) {
+        if let Some(existing) = existing_cues
+            .iter()
+            .filter(|c| c.is_manual_modified)
+            .find(|c| {
+                c.id == new_cue.id
+                    || (c
+                        .source_segment_ids
+                        .iter()
+                        .any(|id| new_cue.source_segment_ids.contains(id))
+                        && c.start_ms < new_cue.end_ms
+                        && new_cue.start_ms < c.end_ms)
+            })
+        {
+            matched_manual_ids.insert(existing.id.clone());
+            new_cue.id = existing.id.clone();
             new_cue.text = existing.text.clone();
             new_cue.is_manual_modified = true;
         }
     }
-    
+
+    // Keep manual-only cues in the result until the user explicitly removes
+    // them. They remain editable and can be reconciled in a later review pass.
+    for existing in existing_cues.iter().filter(|cue| cue.is_manual_modified) {
+        if !matched_manual_ids.contains(&existing.id)
+            && !generated_cues.iter().any(|cue| cue.id == existing.id)
+        {
+            generated_cues.push(existing.clone());
+        }
+    }
+    generated_cues.sort_by_key(|cue| (cue.start_ms, cue.end_ms, cue.id.clone()));
+
     generated_cues
 }
 
 fn flush_cue(words: &mut Vec<WordInfo>) -> CaptionCue {
     let mut text = String::new();
     let mut current_line_len = 0;
-    
+
     let mut segment_ids = Vec::new();
     let start_ms = words.first().map(|w| w.start_ms).unwrap_or(0);
     let end_ms = words.last().map(|w| w.end_ms).unwrap_or(0);
@@ -171,6 +192,7 @@ fn flush_cue(words: &mut Vec<WordInfo>) -> CaptionCue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::project::TranscriptSegment;
 
     fn segment(id: &str, text: &str, start_ms: u64, end_ms: u64) -> TranscriptSegment {
         TranscriptSegment {
@@ -201,13 +223,13 @@ mod tests {
 
         let cues = generate_cues(&transcript, &[]);
         assert_eq!(cues.len(), 2);
-        
+
         // "Chào." is 100ms. Min duration is 500ms. It will be clamped to next cue's start (200ms).
         assert_eq!(cues[0].text, "Chào.");
         assert_eq!(cues[0].start_ms, 0);
-        assert_eq!(cues[0].end_ms, 200); 
+        assert_eq!(cues[0].end_ms, 200);
 
-        // "Bạn khỏe không?" is 800ms, which is > 500ms. 
+        // "Bạn khỏe không?" is 800ms, which is > 500ms.
         assert_eq!(cues[1].text, "Bạn khỏe không?");
         assert_eq!(cues[1].start_ms, 200);
         assert_eq!(cues[1].end_ms, 1000);
@@ -222,14 +244,12 @@ mod tests {
             model_id: "m1".into(),
             language: "vi".into(),
             generated_at: 0,
-            segments: vec![
-                segment("1", long_text, 0, 10000),
-            ],
+            segments: vec![segment("1", long_text, 0, 10000)],
         };
 
         let cues = generate_cues(&transcript, &[]);
         assert!(cues.len() > 1);
-        
+
         for cue in cues {
             assert!(cue.text.chars().count() <= MAX_CHARS_PER_CUE + 10); // +10 for newline flex
             assert!(cue.text.lines().count() <= 2);
@@ -245,9 +265,7 @@ mod tests {
             model_id: "m1".into(),
             language: "vi".into(),
             generated_at: 0,
-            segments: vec![
-                segment("1", text, 0, 5000),
-            ],
+            segments: vec![segment("1", text, 0, 5000)],
         };
 
         let cues = generate_cues(&transcript, &[]);
@@ -263,9 +281,7 @@ mod tests {
             model_id: "m1".into(),
             language: "vi".into(),
             generated_at: 0,
-            segments: vec![
-                segment("1", "Xin chào. Tôi là AI.", 0, 2000),
-            ],
+            segments: vec![segment("1", "Xin chào. Tôi là AI.", 0, 2000)],
         };
 
         let cues = generate_cues(&transcript, &[]);
@@ -282,20 +298,18 @@ mod tests {
             model_id: "m1".into(),
             language: "vi".into(),
             generated_at: 0,
-            segments: vec![
-                segment("1", "Xin chào. Tôi là AI.", 0, 2000),
-            ],
+            segments: vec![segment("1", "Xin chào. Tôi là AI.", 0, 2000)],
         };
 
         let mut existing_cues = generate_cues(&transcript, &[]);
         existing_cues[0].text = "Hello.".to_string();
         existing_cues[0].is_manual_modified = true;
-        
+
         let new_cues = generate_cues(&transcript, &existing_cues);
         assert_eq!(new_cues.len(), 2);
         assert_eq!(new_cues[0].text, "Hello.");
         assert!(new_cues[0].is_manual_modified);
-        
+
         assert_eq!(new_cues[1].text, "Tôi là AI.");
         assert!(!new_cues[1].is_manual_modified);
     }

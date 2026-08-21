@@ -1,6 +1,6 @@
-use async_trait::async_trait;
-use crate::models::ai::{AIAnalysisRequest, AIAnalysisResponse, AIAnalysisAction, AIProviderError};
 use super::AIProvider;
+use crate::models::ai::{AIAnalysisRequest, AIAnalysisResponse, AIEditAction, AIProviderError};
+use async_trait::async_trait;
 
 pub struct MockAIProvider;
 
@@ -10,34 +10,48 @@ impl MockAIProvider {
     }
 }
 
+impl Default for MockAIProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl AIProvider for MockAIProvider {
     async fn analyze_transcript(
         &self,
-        _request: &AIAnalysisRequest,
+        request: &AIAnalysisRequest,
     ) -> Result<AIAnalysisResponse, AIProviderError> {
-        // Return a mock response
+        let actions = request
+            .source_media_id
+            .as_ref()
+            .map(|source_media_id| {
+                request
+                    .segments
+                    .iter()
+                    .map(|segment| AIEditAction {
+                        id: format!("mock-{}", segment.id),
+                        source_media_id: source_media_id.clone(),
+                        start_ms: segment.start_ms,
+                        end_ms: segment.end_ms,
+                        action: "KEEP".into(),
+                        reason: "Deterministic mock suggestion".into(),
+                        confidence: 1.0,
+                        taxonomy: "none".into(),
+                        source: "ai".into(),
+                        segment_ids: vec![segment.id.clone()],
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         Ok(AIAnalysisResponse {
-            actions: vec![
-                AIAnalysisAction {
-                    start: 1.5,
-                    end: 3.0,
-                    action: "CUT".to_string(),
-                    reason: "Mock false start detection".to_string(),
-                    confidence: 0.85,
-                    taxonomy: "false_start".to_string(),
-                },
-                AIAnalysisAction {
-                    start: 5.0,
-                    end: 8.5,
-                    action: "HIGHLIGHT".to_string(),
-                    reason: "Mock important statement".to_string(),
-                    confidence: 0.95,
-                    taxonomy: "important_statement".to_string(),
-                },
-            ],
-            summary: Some("Mock analysis completed successfully.".to_string()),
-            usage_tokens: Some(42),
+            actions,
+            summary: Some("Deterministic mock analysis completed.".into()),
+            usage_tokens: Some(0),
+            provider: Some("mock".into()),
+            model: Some("deterministic".into()),
+            prompt_version: Some("semantic-v2".into()),
         })
     }
 }
