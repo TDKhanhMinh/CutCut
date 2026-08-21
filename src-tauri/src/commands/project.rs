@@ -1,4 +1,5 @@
-use crate::models::project::Project;
+use crate::models::edit_plan::EditPlan;
+use crate::models::project::{MediaSource, Project};
 use crate::services::edit_validator::{validate_and_normalize, IssueLevel};
 use crate::services::project_repository::{load_project, save_project, ProjectSaveCoordinator};
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,23 @@ pub struct ProjectResponse {
 #[tauri::command]
 pub async fn create_project() -> Result<Project, String> {
     Ok(Project::default())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditPlanValidationResult {
+    pub issues: Vec<crate::services::edit_validator::ValidationIssue>,
+}
+
+/// Validate a candidate plan before it is shown in review. This command is
+/// read-only: it reports issues but does not normalize or persist the plan.
+#[tauri::command]
+pub fn validate_edit_plan(
+    edit_plan: EditPlan,
+    media: Vec<MediaSource>,
+) -> Result<EditPlanValidationResult, String> {
+    let (_, issues) = validate_and_normalize(edit_plan, &media);
+    Ok(EditPlanValidationResult { issues })
 }
 
 #[tauri::command]

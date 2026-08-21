@@ -32,6 +32,7 @@ pub fn run() {
             commands::media::export_prototype_video,
             commands::media::preview_prototype_video,
             commands::project::create_project,
+            commands::project::validate_edit_plan,
             commands::project::save_project_to_disk,
             commands::project::load_project_from_disk,
             commands::media::check_media_exists,

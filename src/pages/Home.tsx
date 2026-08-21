@@ -87,8 +87,10 @@ export function Home() {
           <div className="h-[600px] w-full max-w-md flex-1">
             <ReviewControls
               mediaId={sourceData.id}
+              media={activeProject.media}
               sourcePath={sourceData.path}
               durationMs={Math.max(0, Math.round(sourceData.metadata.durationSec * 1000))}
+              transcript={activeProject.transcript}
               silenceConfig={activeProject.silenceSettings ?? DEFAULT_SILENCE_CONFIG}
               editPlan={activeProject.editPlan}
               onEditPlanChange={handleEditPlanChange}

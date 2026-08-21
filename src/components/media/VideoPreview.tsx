@@ -50,6 +50,7 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(funct
   const videoRef = useRef<HTMLVideoElement>(null);
   const pendingSeekMsRef = useRef<number | null>(null);
   const rangeRef = useRef<{ startMs: number; endMs: number } | null>(null);
+  const bypassCutPreviewRef = useRef(false);
   const [cutPreviewActive, setCutPreviewActive] = useState(false);
   const [showCaptions, setShowCaptions] = useState(true);
 
@@ -58,6 +59,7 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(funct
     plan: editPlan ?? null,
     enabled: cutPreviewActive,
     sourceMediaId,
+    bypassRef: bypassCutPreviewRef,
   });
 
   const assetUrl = convertFileSrc(path);
@@ -98,6 +100,7 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(funct
         }
 
         rangeRef.current = null;
+        bypassCutPreviewRef.current = false;
         return applySeek(video, requestedTimeMs);
       },
       seekTo: (requestedTimeMs) => {
@@ -115,6 +118,9 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(funct
         const boundedEnd = Math.max(boundedStart, Math.round(endMs));
         const playStartMs = Math.max(0, boundedStart - 1000);
         rangeRef.current = { startMs: boundedStart, endMs: boundedEnd };
+        // Suggestion context must expose the cut itself even when cut-preview
+        // mode is enabled; restore skipping after the context range completes.
+        bypassCutPreviewRef.current = true;
         applySeek(video, playStartMs);
         void video.play().catch(() => undefined);
       },
@@ -148,6 +154,7 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(funct
     } else if (currentMs >= range.endMs + 1000) {
       video.pause();
       rangeRef.current = null;
+      bypassCutPreviewRef.current = false;
     }
   };
 

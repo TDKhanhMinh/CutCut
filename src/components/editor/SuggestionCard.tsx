@@ -10,6 +10,8 @@ export interface CutSuggestion {
   action: EditAction;
   evidence: DetectorEvidence;
   sourceVersion: string;
+  kind?: "silence" | "filler";
+  reviewRequired?: boolean;
 }
 
 interface SuggestionCardProps {
@@ -34,6 +36,7 @@ export function SuggestionCard({ suggestion, onToggle, onPreview }: SuggestionCa
     if (reason === "silence") return "Silence";
     if (reason === "noise_only") return "Background Noise";
     if (reason === "uncertain") return "Uncertain Speech";
+    if (reason.startsWith("filler:")) return `Filler: ${reason.slice("filler:".length)}`;
     return reason;
   };
 
@@ -53,7 +56,12 @@ export function SuggestionCard({ suggestion, onToggle, onPreview }: SuggestionCa
         </div>
 
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="icon" onClick={() => onPreview(startMs, endMs)}>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label={`Preview ${formatTime(startMs)} to ${formatTime(endMs)}`}
+            onClick={() => onPreview(startMs, endMs)}
+          >
             <Play className="h-4 w-4" />
           </Button>
           <div className="flex items-center gap-2">

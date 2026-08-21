@@ -11,6 +11,11 @@ export interface CutInterval {
   endMs: number;
 }
 
+export interface CutSeekTarget {
+  targetMs: number;
+  pauseAtEnd: boolean;
+}
+
 /**
  * Tolerance (ms) used to detect re-entry into a cut region right after a seek.
  * Without this, the `timeupdate` event can fire before the browser commits the
@@ -67,6 +72,7 @@ export function buildCutIndex(plan: EditPlan, sourceMediaId?: string): CutInterv
  * Returns `null` if no enabled cut covers the given time.
  */
 export function findActiveCut(cutIndex: CutInterval[], timeMs: number): CutInterval | null {
+  if (!Number.isFinite(timeMs)) return null;
   let low = 0;
   let high = cutIndex.length - 1;
   while (low <= high) {
@@ -83,6 +89,23 @@ export function findActiveCut(cutIndex: CutInterval[], timeMs: number): CutInter
   return null;
 }
 
+/** Resolve a safe source-time seek for an active cut. */
+export function resolveCutSeekTarget(
+  cut: CutInterval,
+  currentMs: number,
+  durationMs: number | null,
+): CutSeekTarget {
+  const boundedEnd =
+    durationMs !== null && Number.isFinite(durationMs)
+      ? Math.min(Math.max(0, durationMs), cut.endMs)
+      : Math.max(0, cut.endMs);
+  const targetMs = Math.max(boundedEnd, Math.max(0, currentMs));
+  return {
+    targetMs,
+    pauseAtEnd: durationMs !== null && Number.isFinite(durationMs) && targetMs >= durationMs,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Hook
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +118,8 @@ interface UseCutPreviewOptions {
   /** Whether cut-preview mode is active. When false the hook is a no-op. */
   enabled: boolean;
   sourceMediaId?: string;
+  /** Temporarily bypass cut skipping for suggestion context previews. */
+  bypassRef?: React.MutableRefObject<boolean>;
 }
 
 /**
@@ -109,7 +134,13 @@ interface UseCutPreviewOptions {
  * - The hook never writes to Project JSON or touches source media.
  * - Source time ≠ output/edited time; this is a preview approximation only.
  */
-export function useCutPreview({ videoRef, plan, enabled, sourceMediaId }: UseCutPreviewOptions) {
+export function useCutPreview({
+  videoRef,
+  plan,
+  enabled,
+  sourceMediaId,
+  bypassRef,
+}: UseCutPreviewOptions) {
   // Mutable ref for cut index — avoids stale closures in timeupdate handler
   const cutIndexRef = useRef<CutInterval[]>([]);
 
@@ -127,7 +158,7 @@ export function useCutPreview({ videoRef, plan, enabled, sourceMediaId }: UseCut
 
   const handleTimeUpdate = useCallback(() => {
     const video = videoRef.current;
-    if (!video || !enabled || cutIndexRef.current.length === 0) return;
+    if (!video || !enabled || bypassRef?.current || cutIndexRef.current.length === 0) return;
 
     const currentMs = video.currentTime * 1000;
 
@@ -146,21 +177,21 @@ export function useCutPreview({ videoRef, plan, enabled, sourceMediaId }: UseCut
     if (!activeCut) return;
 
     // Seek to the end of this cut
-    const seekTarget = activeCut.endMs;
-
-    // Handle end-of-media: if seekTarget >= duration, pause at end
-    const durationMs = video.duration * 1000;
-    if (seekTarget >= durationMs) {
+    const durationMs =
+      Number.isFinite(video.duration) && video.duration >= 0 ? video.duration * 1000 : null;
+    const resolved = resolveCutSeekTarget(activeCut, currentMs, durationMs);
+    if (resolved.pauseAtEnd) {
       video.pause();
-      video.currentTime = durationMs / 1000;
+      if (durationMs !== null) video.currentTime = durationMs / 1000;
       lastSeekTargetRef.current = null;
       return;
     }
 
     // Perform the skip seek
-    lastSeekTargetRef.current = seekTarget;
-    video.currentTime = seekTarget / 1000;
-  }, [videoRef, enabled]);
+    if (resolved.targetMs <= currentMs) return;
+    lastSeekTargetRef.current = resolved.targetMs;
+    video.currentTime = resolved.targetMs / 1000;
+  }, [bypassRef, enabled, videoRef]);
 
   // Attach / detach the timeupdate listener
   useEffect(() => {

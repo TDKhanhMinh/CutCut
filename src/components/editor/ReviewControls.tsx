@@ -1,17 +1,22 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CutSuggestion, SuggestionCard } from "./SuggestionCard";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { invoke } from "@tauri-apps/api/core";
 import type { EditPlan } from "@/types/project";
+import type { MediaSource, Transcript } from "@/types/project";
 import type { NonSpeechCandidate } from "@/types/fusion";
 import { DEFAULT_SILENCE_CONFIG, type SilenceConfig } from "@/types/silence";
 import { analyzeNonSpeech } from "@/services/nonSpeechAnalysis";
+import { detectFillerCandidates } from "@/services/filler";
+import { validateEditPlan } from "@/services/project";
 
 interface ReviewControlsProps {
   mediaId: string;
+  media: MediaSource[];
   sourcePath: string;
   durationMs: number;
+  transcript?: Transcript | null;
   silenceConfig?: SilenceConfig;
   editPlan: EditPlan;
   onEditPlanChange: (plan: EditPlan) => void;
@@ -21,42 +26,108 @@ interface ReviewControlsProps {
 
 export function ReviewControls({
   mediaId,
+  media,
   sourcePath,
   durationMs,
+  transcript,
   silenceConfig = DEFAULT_SILENCE_CONFIG,
   editPlan,
   onEditPlanChange,
   onPreview,
   analysisCandidates = [],
 }: ReviewControlsProps) {
-  const [suggestions, setSuggestions] = useState<CutSuggestion[]>([]);
+  const persistedSuggestions = useMemo(
+    () =>
+      editPlan.actions
+        .filter(
+          (action) =>
+            action.source === "local" &&
+            action.type === "cut" &&
+            action.sourceMediaId === mediaId &&
+            (action.reason === "silence" ||
+              action.reason === "noise_only" ||
+              action.reason === "uncertain" ||
+              action.reason.startsWith("filler:")),
+        )
+        .map((action) => ({
+          action,
+          evidence: {
+            has_amplitude_silence: action.reason === "silence",
+            has_vad_non_speech: action.reason === "noise_only",
+          },
+          sourceVersion: "persisted-edit-plan",
+          kind: action.reason.startsWith("filler:") ? ("filler" as const) : ("silence" as const),
+          reviewRequired: action.reason.startsWith("filler:"),
+        })),
+    [editPlan.actions, mediaId],
+  );
+  const [suggestions, setSuggestions] = useState<CutSuggestion[]>(persistedSuggestions);
   const [candidates, setCandidates] = useState<NonSpeechCandidate[]>(analysisCandidates);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSuggestions(persistedSuggestions);
+  }, [persistedSuggestions]);
 
   const handleRunAnalysis = async () => {
     setLoading(true);
     setError(null);
     try {
-      const fusion = await analyzeNonSpeech({ sourcePath, durationMs, silenceConfig });
+      const fusionPromise = analyzeNonSpeech({ sourcePath, durationMs, silenceConfig });
+      const fillerPromise = transcript
+        ? detectFillerCandidates(mediaId, transcript, durationMs, 40)
+        : Promise.resolve(null);
+      const [fusion, filler] = await Promise.all([fusionPromise, fillerPromise]);
       setCandidates(fusion.candidates);
-      const result: CutSuggestion[] = await invoke("generate_cut_suggestions", {
+      const silenceResult: CutSuggestion[] = await invoke("generate_cut_suggestions", {
         sourceMediaId: mediaId,
         candidates: fusion.candidates,
         analysisVersion: fusion.analysis_version,
         existingPlan: editPlan,
         mediaDurationMs: durationMs,
       });
-      setSuggestions(result);
-      const generatedActions = result.map((suggestion) => suggestion.action);
+      const fillerSuggestions: CutSuggestion[] =
+        filler?.actions.map((action) => ({
+          action,
+          evidence: {
+            has_amplitude_silence: false,
+            has_vad_non_speech: false,
+          },
+          sourceVersion: `filler-dictionary-${filler.dictionaryVersion}`,
+          kind: "filler",
+          reviewRequired: filler.candidates.find((candidate) => candidate.id === action.id)
+            ?.reviewRequired,
+        })) ?? [];
+      const result = [...silenceResult, ...fillerSuggestions];
+      const generatedActions = result.map((suggestion) => {
+        const previous = editPlan.actions.find((action) => action.id === suggestion.action.id);
+        return previous
+          ? { ...suggestion.action, enabled: previous.enabled, updatedAt: previous.updatedAt }
+          : suggestion.action;
+      });
       const generatedIds = new Set(generatedActions.map((action) => action.id));
-      onEditPlanChange({
+      const nextPlan: EditPlan = {
         ...editPlan,
         actions: [
           ...editPlan.actions.filter((action) => !generatedIds.has(action.id)),
           ...generatedActions,
         ],
-      });
+      };
+      const validation = await validateEditPlan(nextPlan, media);
+      const errors = validation.issues.filter((issue) => issue.level === "error");
+      if (errors.length > 0) {
+        throw new Error(errors.map((issue) => issue.message).join("; "));
+      }
+      setSuggestions(
+        result.map((suggestion) => ({
+          ...suggestion,
+          action:
+            generatedActions.find((action) => action.id === suggestion.action.id) ??
+            suggestion.action,
+        })),
+      );
+      onEditPlanChange(nextPlan);
     } catch (e) {
       console.error(e);
       setError(e instanceof Error ? e.message : String(e));
@@ -78,11 +149,12 @@ export function ReviewControls({
   };
 
   const handleRemoveAll = () => {
+    const suggestionIds = new Set(suggestions.map((suggestion) => suggestion.action.id));
     setSuggestions((prev) => prev.map((s) => ({ ...s, action: { ...s.action, enabled: false } })));
     onEditPlanChange({
       ...editPlan,
       actions: editPlan.actions.map((action) =>
-        action.source === "local" && action.type === "cut"
+        suggestionIds.has(action.id)
           ? { ...action, enabled: false, updatedAt: Date.now() }
           : action,
       ),
@@ -90,13 +162,12 @@ export function ReviewControls({
   };
 
   const handleKeepAll = () => {
+    const suggestionIds = new Set(suggestions.map((suggestion) => suggestion.action.id));
     setSuggestions((prev) => prev.map((s) => ({ ...s, action: { ...s.action, enabled: true } })));
     onEditPlanChange({
       ...editPlan,
       actions: editPlan.actions.map((action) =>
-        action.source === "local" && action.type === "cut"
-          ? { ...action, enabled: true, updatedAt: Date.now() }
-          : action,
+        suggestionIds.has(action.id) ? { ...action, enabled: true, updatedAt: Date.now() } : action,
       ),
     });
   };
@@ -124,8 +195,8 @@ export function ReviewControls({
       <ScrollArea className="flex-1 pr-4">
         {suggestions.length === 0 && !loading && (
           <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-            {candidates.length === 0
-              ? "Chưa có Non-Speech Analysis cho media này. Hãy chạy local analysis trước."
+            {candidates.length === 0 && !transcript
+              ? "Chưa có local analysis cho media này. Hãy chạy phân tích để tạo đề xuất."
               : 'Nhấn "Generate Analysis" để tạo đề xuất.'}
           </div>
         )}
