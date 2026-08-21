@@ -27,6 +27,7 @@ export function SuggestionCard({ suggestion, onToggle, onPreview }: SuggestionCa
 
   // Map reason to friendly badge color
   const getBadgeVariant = (reason: string) => {
+    if (reason.startsWith("filler:")) return "secondary" as const;
     if (reason === "silence") return "default" as const;
     if (reason === "noise_only") return "secondary" as const;
     return "destructive" as const;
@@ -53,6 +54,9 @@ export function SuggestionCard({ suggestion, onToggle, onPreview }: SuggestionCa
           <span className="text-sm text-muted-foreground">
             {formatTime(startMs)} - {formatTime(endMs)}
           </span>
+          {suggestion.reviewRequired && (
+            <span className="text-xs text-amber-600">Review required — segment timing</span>
+          )}
         </div>
 
         <div className="flex items-center gap-4">

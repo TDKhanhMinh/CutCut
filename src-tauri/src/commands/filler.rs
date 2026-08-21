@@ -26,7 +26,14 @@ pub fn detect_filler_candidates(
     }
 
     let dictionary = FillerDictionary::default();
-    let candidates = detect_fillers(&source_media_id, &transcript.segments, &dictionary);
+    let candidates = detect_fillers(&source_media_id, &transcript.segments, &dictionary)
+        .into_iter()
+        .filter_map(|mut candidate| {
+            candidate.start_ms = candidate.start_ms.min(media_duration_ms);
+            candidate.end_ms = candidate.end_ms.min(media_duration_ms);
+            (candidate.start_ms < candidate.end_ms).then_some(candidate)
+        })
+        .collect::<Vec<_>>();
     let created_at = now_ms();
     let actions = candidates
         .iter()

@@ -1,6 +1,7 @@
 use crate::models::edit_plan::{EditAction, EditActionSource, EditActionType};
 use crate::models::project::TranscriptSegment;
 use serde::{Deserialize, Serialize};
+use unicode_normalization::UnicodeNormalization;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Filler Dictionary (V1 — Vietnamese)
@@ -202,14 +203,9 @@ pub fn detect_fillers(
 // String Utilities
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// Lowercase a string for consistent matching.
-/// Whisper output for Vietnamese is already NFC-normalised, so we only need lowercase.
+/// Normalize Unicode to NFC and lowercase at the detector boundary.
 pub fn normalize(s: &str) -> String {
-    // The transcript parser already emits NFC text. Keep this helper as the
-    // single normalization boundary and lower-case here; malformed combining
-    // sequences are rejected by the whole-token matcher rather than treated as
-    // substring matches.
-    s.to_lowercase()
+    s.nfc().collect::<String>().to_lowercase().nfc().collect()
 }
 
 /// Split text into whole tokens, strip punctuation, and normalise.
@@ -258,6 +254,15 @@ mod tests {
     fn test_um_variant_detected() {
         let dict = FillerDictionary::default();
         let segments = vec![seg("s1", "ừm hôm nay chúng ta", 500, 3000, false)];
+        let candidates = detect_fillers("vid", &segments, &dict);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].matched_token, "ừm");
+    }
+
+    #[test]
+    fn normalizes_combining_marks_to_nfc_before_matching() {
+        let dict = FillerDictionary::default();
+        let segments = vec![seg("s1", "u\u{031b}\u{0300}m hôm nay", 500, 3000, false)];
         let candidates = detect_fillers("vid", &segments, &dict);
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].matched_token, "ừm");
