@@ -13,11 +13,17 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .manage(services::media_job::JobManager::default())
+        .manage(services::auth_session::AuthSessionStore::default())
+        .manage(services::resource_manager::ResourceJobManager::default())
+        .manage(services::hardware_detection::RuntimeProfileCache::default())
+        .manage(services::project_repository::ProjectSaveCoordinator::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             greet,
+            commands::cache::get_cache_usage,
+            commands::cache::clear_project_cache,
             commands::media::check_media_engines,
             commands::media::get_ffmpeg_version,
             commands::media::get_ffprobe_version,
@@ -25,21 +31,34 @@ pub fn run() {
             commands::media::spawn_test_ffmpeg_job,
             commands::media::read_media_metadata,
             commands::media::export_prototype_video,
+            commands::media::preview_prototype_video,
+            commands::media::finalize_preview_artifact,
+            commands::auth::set_auth_session,
+            commands::auth::get_auth_session,
+            commands::auth::clear_auth_session,
             commands::project::create_project,
+            commands::project::validate_edit_plan,
             commands::project::save_project_to_disk,
             commands::project::load_project_from_disk,
             commands::media::check_media_exists,
             commands::media::extract_audio_for_stt,
             commands::media::cleanup_stt_audio,
+            commands::caption::generate_caption_cues,
+            commands::filler::detect_filler_candidates,
             commands::whisper::transcribe_audio,
             commands::resource::get_models,
             commands::resource::get_model_state,
             commands::resource::download_model,
+            commands::resource::cancel_model_download,
             commands::resource::delete_model,
             commands::resource::get_active_model,
             commands::resource::set_active_model,
+            commands::resource::get_resource_usage,
+            commands::whisper::check_whisper_runtime,
             commands::diagnostics::get_runtime_profile,
             commands::diagnostics::resolve_runtime_preset,
+            commands::diagnostics::get_runtime_preset_preference,
+            commands::diagnostics::set_runtime_preset_preference,
             services::silence_detector::start_silence_detection,
             commands::vad::start_vad_analysis,
             commands::fusion::fuse_non_speech_intervals,

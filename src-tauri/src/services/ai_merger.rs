@@ -1,93 +1,57 @@
-use uuid::Uuid;
+use crate::models::ai::AIEditAction;
+use crate::models::edit_plan::{EditAction, EditActionSource, EditActionType};
 use crate::models::project::Project;
-use crate::models::edit_plan::{ActionPayload, ActionSource, EditAction};
-use crate::models::ai::AIAnalysisAction;
+use uuid::Uuid;
 
 pub struct AiMergerService;
 
 impl AiMergerService {
-    const OVERLAP_TOLERANCE_MS: u64 = 200; // 200ms tolerance
+    const OVERLAP_TOLERANCE_MS: u64 = 200;
 
-    pub fn merge_proposals(
-        project: &mut Project,
-        ai_actions: Vec<AIAnalysisAction>,
-    ) {
-        let plan = &mut project.edit_plan;
-        
+    /// Merge validated AI proposals into the canonical, non-destructive plan.
+    /// Unsupported proposal kinds are ignored because the canonical EditPlan
+    /// deliberately has no highlight action type.
+    pub fn merge_proposals(project: &mut Project, ai_actions: Vec<AIEditAction>) {
         for ai_action in ai_actions {
-            // Only care about CUT and HIGHLIGHT
-            if ai_action.action == "KEEP" {
-                continue;
-            }
-
-            let start_ms = (ai_action.start * 1000.0) as u64;
-            let end_ms = (ai_action.end * 1000.0) as u64;
-
-            // Check against existing actions for duplicates / user rejections
-            let mut is_duplicate = false;
-            let mut user_rejected = false;
-
-            for existing_action in &plan.actions {
-                let (ex_start, ex_end) = match &existing_action.payload {
-                    ActionPayload::Cut { start_ms, end_ms } => (*start_ms, *end_ms),
-                    ActionPayload::Highlight { start_ms, end_ms } => (*start_ms, *end_ms),
-                    _ => continue, // Ignore captions/zooms for this comparison
-                };
-
-                let same_type = match (&existing_action.payload, ai_action.action.as_str()) {
-                    (ActionPayload::Cut { .. }, "CUT") => true,
-                    (ActionPayload::Highlight { .. }, "HIGHLIGHT") => true,
-                    _ => false,
-                };
-
-                if same_type {
-                    let start_diff = (ex_start as i64 - start_ms as i64).abs() as u64;
-                    let end_diff = (ex_end as i64 - end_ms as i64).abs() as u64;
-
-                    if start_diff <= Self::OVERLAP_TOLERANCE_MS && end_diff <= Self::OVERLAP_TOLERANCE_MS {
-                        is_duplicate = true;
-                        if existing_action.is_manual_modified == Some(true) {
-                            user_rejected = true; // User explicitly modified this action
-                        } else if !existing_action.enabled {
-                            user_rejected = true; // Legacy fallback for rejected actions
-                        }
-                        break;
-                    }
-                }
-            }
-
-            // Conflict Resolution Matrix:
-            if user_rejected {
-                // Rule 1: User previously rejected this cut. Ignore AI proposal entirely.
-                continue;
-            }
-
-            if is_duplicate {
-                // Rule 2: It's a duplicate of an enabled local action. We deduplicate by ignoring the new one.
-                continue;
-            }
-
-            // Rule 3: It's a new valid action. Insert it.
-            let payload = match ai_action.action.as_str() {
-                "CUT" => ActionPayload::Cut { start_ms, end_ms },
-                "HIGHLIGHT" => ActionPayload::Highlight { start_ms, end_ms },
+            let action_type = match ai_action.action.as_str() {
+                "CUT" => EditActionType::Cut,
+                "HIGHLIGHT" => EditActionType::Highlight,
                 _ => continue,
             };
 
-            let new_action = EditAction {
+            let same_range = |existing: &EditAction| {
+                existing.action_type == action_type
+                    && existing.source_media_id == ai_action.source_media_id
+                    && existing.start_ms.abs_diff(ai_action.start_ms) <= Self::OVERLAP_TOLERANCE_MS
+                    && existing.end_ms.abs_diff(ai_action.end_ms) <= Self::OVERLAP_TOLERANCE_MS
+            };
+
+            if project.edit_plan.actions.iter().any(|existing| {
+                same_range(existing)
+                    && existing.source == EditActionSource::User
+                    && (existing.is_manual_modified == Some(true) || !existing.enabled)
+            }) {
+                continue;
+            }
+            if project.edit_plan.actions.iter().any(same_range) {
+                continue;
+            }
+
+            project.edit_plan.actions.push(EditAction {
                 id: Uuid::new_v4().to_string(),
-                source_media_id: "default_media".to_string(), // In a real app, match with actual media
-                payload,
-                source: ActionSource::AiAgent,
+                action_type,
+                source_media_id: ai_action.source_media_id,
+                start_ms: ai_action.start_ms,
+                end_ms: ai_action.end_ms,
+                source: EditActionSource::Ai,
                 reason: format!("{} ({})", ai_action.reason, ai_action.taxonomy),
-                confidence: Some(ai_action.confidence.to_string()),
-                enabled: true, // Proposed action defaults to enabled
+                confidence: Some(ai_action.confidence),
+                enabled: true,
                 is_manual_modified: None,
                 created_at: 0,
                 updated_at: 0,
-            };
-
-            plan.actions.push(new_action);
+                payload: None,
+            });
         }
     }
 }
@@ -95,88 +59,67 @@ impl AiMergerService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::project::Project;
-    use crate::models::edit_plan::{ActionPayload, ActionSource, EditAction, EditPlan};
-    use crate::models::ai::AIAnalysisAction;
+    use crate::models::edit_plan::{EditAction, EditActionSource, EditActionType};
 
-    fn create_mock_project(existing_actions: Vec<EditAction>) -> Project {
-        let mut proj = Project::default();
-        proj.edit_plan.actions = existing_actions;
-        proj
-    }
-
-    #[test]
-    fn test_merge_new_action() {
-        let mut proj = create_mock_project(vec![]);
-        let ai_actions = vec![AIAnalysisAction {
-            start: 1.0,
-            end: 2.0,
-            action: "CUT".to_string(),
-            reason: "false_start".to_string(),
+    fn ai(start_ms: u64, end_ms: u64) -> AIEditAction {
+        AIEditAction {
+            id: "ai-1".into(),
+            source_media_id: "media-1".into(),
+            start_ms,
+            end_ms,
+            action: "CUT".into(),
+            reason: "false_start".into(),
             confidence: 0.9,
-            taxonomy: "false_start".to_string(),
-        }];
+            taxonomy: "false_start".into(),
+            source: "ai".into(),
+            segment_ids: vec!["segment-1".into()],
+        }
+    }
 
-        AiMergerService::merge_proposals(&mut proj, ai_actions);
-        assert_eq!(proj.edit_plan.actions.len(), 1);
-        assert_eq!(proj.edit_plan.actions[0].source, ActionSource::AiAgent);
+    fn project_with(actions: Vec<EditAction>) -> Project {
+        let mut project = Project::default();
+        project.edit_plan.actions = actions;
+        project
+    }
+
+    fn action(source: EditActionSource, enabled: bool) -> EditAction {
+        EditAction {
+            id: "existing".into(),
+            action_type: EditActionType::Cut,
+            source_media_id: "media-1".into(),
+            start_ms: 1_000,
+            end_ms: 2_000,
+            source: source.clone(),
+            reason: "existing".into(),
+            confidence: None,
+            enabled,
+            is_manual_modified: (source == EditActionSource::User).then_some(true),
+            created_at: 0,
+            updated_at: 0,
+            payload: None,
+        }
     }
 
     #[test]
-    fn test_merge_dedupe_local_action() {
-        let mut proj = create_mock_project(vec![EditAction {
-            id: "local-1".to_string(),
-            source_media_id: "default".to_string(),
-            payload: ActionPayload::Cut { start_ms: 1000, end_ms: 2000 },
-            source: ActionSource::LocalDetector,
-            reason: "silence".to_string(),
-            confidence: None,
-            enabled: true,
-            is_manual_modified: None,
-            created_at: 0,
-            updated_at: 0,
-        }]);
-
-        let ai_actions = vec![AIAnalysisAction {
-            start: 1.05,
-            end: 1.95,
-            action: "CUT".to_string(),
-            reason: "redundant".to_string(),
-            confidence: 0.95,
-            taxonomy: "redundant_sentence".to_string(),
-        }];
-
-        AiMergerService::merge_proposals(&mut proj, ai_actions);
-        assert_eq!(proj.edit_plan.actions.len(), 1);
-        assert_eq!(proj.edit_plan.actions[0].id, "local-1");
+    fn merges_new_cut() {
+        let mut project = project_with(vec![]);
+        AiMergerService::merge_proposals(&mut project, vec![ai(1_000, 2_000)]);
+        assert_eq!(project.edit_plan.actions.len(), 1);
+        assert_eq!(project.edit_plan.actions[0].source, EditActionSource::Ai);
     }
 
     #[test]
-    fn test_merge_user_rejected_action() {
-        let mut proj = create_mock_project(vec![EditAction {
-            id: "local-2".to_string(),
-            source_media_id: "default".to_string(),
-            payload: ActionPayload::Cut { start_ms: 5000, end_ms: 6000 },
-            source: ActionSource::UserManual,
-            reason: "manual".to_string(),
-            confidence: None,
-            enabled: false,
-            is_manual_modified: Some(true),
-            created_at: 0,
-            updated_at: 0,
-        }]);
+    fn deduplicates_existing_cut_with_tolerance() {
+        let mut project = project_with(vec![action(EditActionSource::Local, true)]);
+        AiMergerService::merge_proposals(&mut project, vec![ai(1_050, 1_950)]);
+        assert_eq!(project.edit_plan.actions.len(), 1);
+    }
 
-        let ai_actions = vec![AIAnalysisAction {
-            start: 5.0,
-            end: 6.0,
-            action: "CUT".to_string(),
-            reason: "false_start".to_string(),
-            confidence: 0.85,
-            taxonomy: "false_start".to_string(),
-        }];
-
-        AiMergerService::merge_proposals(&mut proj, ai_actions);
-        assert_eq!(proj.edit_plan.actions.len(), 1);
-        assert_eq!(proj.edit_plan.actions[0].enabled, false);
+    #[test]
+    fn preserves_user_rejection() {
+        let mut project = project_with(vec![action(EditActionSource::User, false)]);
+        AiMergerService::merge_proposals(&mut project, vec![ai(1_000, 2_000)]);
+        assert_eq!(project.edit_plan.actions.len(), 1);
+        assert!(!project.edit_plan.actions[0].enabled);
     }
 }

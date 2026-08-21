@@ -1,120 +1,179 @@
-import { invoke } from '@tauri-apps/api/core';
-import { create } from 'zustand';
-import { produce } from 'immer';
-import { temporal } from 'zundo';
-import { Project } from '../types/project';
-import { MediaSourceMetadata } from '../components/media/MediaImporter';
+import { create } from "zustand";
+import { temporal } from "zundo";
+import { produce } from "immer";
+import { checkMediaExists } from "@/services/media";
+import { saveProjectToDisk } from "@/services/project";
+import type { MediaSourceMetadata } from "@/types/media";
+import type { Project } from "../types/project";
+import {
+  applyTranscriptTextEdit,
+  markTranscriptDependentArtifactsStale,
+  revertTranscriptTextEdit,
+} from "@/lib/transcript-edit";
 
 interface ProjectState {
-    activeProject: Project | null;
-    projectPath: string | null;
-    isDirty: boolean;
-    saveState: 'idle' | 'saving' | 'saved' | 'error';
-    missingMediaIds: string[];
-    
-    // Actions
-    setProject: (project: Project, path: string | null) => void;
-    updateProject: (updater: (draft: Project) => void) => void; 
-    
-    // Commands
-    saveProject: () => Promise<void>;
-    setSaveState: (state: 'idle' | 'saving' | 'saved' | 'error') => void;
-    checkMediaStatus: () => Promise<void>;
-    relinkMedia: (mediaId: string, newPath: string, newMetadata: MediaSourceMetadata) => void;
+  activeProject: Project | null;
+  projectPath: string | null;
+  isDirty: boolean;
+  revision: number;
+  saveState: "idle" | "saving" | "saved" | "error";
+  lastSaveError: string | null;
+  missingMediaIds: string[];
+
+  setProject: (project: Project, path: string | null) => void;
+  updateProject: (updater: (draft: Project) => void) => void;
+  updateTranscriptSegmentText: (segmentId: string, text: string) => void;
+  revertTranscriptSegmentText: (segmentId: string) => void;
+  saveProject: () => Promise<void>;
+  saveProjectAs: (path: string) => Promise<void>;
+  setSaveState: (state: "idle" | "saving" | "saved" | "error") => void;
+  checkMediaStatus: () => Promise<void>;
+  relinkMedia: (mediaId: string, newPath: string, newMetadata: MediaSourceMetadata) => void;
 }
 
 export const useProjectStore = create<ProjectState>()(
-    temporal(
-        (set, get) => ({
-            activeProject: null,
-            projectPath: null,
-            isDirty: false,
-            saveState: 'idle',
-            missingMediaIds: [],
+  temporal(
+    (set, get) => ({
+      activeProject: null,
+      projectPath: null,
+      isDirty: false,
+      revision: 0,
+      saveState: "idle",
+      lastSaveError: null,
+      missingMediaIds: [],
 
-            setProject: (project, path) => {
-                set({ 
-                    activeProject: project, 
-                    projectPath: path, 
-                    isDirty: false, 
-                    saveState: 'idle' 
-                });
-                get().checkMediaStatus();
-            },
+      setProject: (project, path) => {
+        set((state) => ({
+          activeProject: project,
+          projectPath: path,
+          isDirty: false,
+          revision: state.revision + 1,
+          saveState: "idle",
+          lastSaveError: null,
+          missingMediaIds: [],
+        }));
+        void get().checkMediaStatus();
+      },
 
-            updateProject: (updater) => {
-                set((state) => {
-                    if (!state.activeProject) return state;
-                    
-                    const nextProject = produce(state.activeProject, updater);
-                    
-                    return {
-                        activeProject: nextProject,
-                        isDirty: true,
-                        saveState: 'idle',
-                    };
-                });
-            },
+      updateProject: (updater) => {
+        set((state) => {
+          if (!state.activeProject) return state;
+          const nextProject = produce(state.activeProject, updater);
+          return {
+            activeProject: nextProject,
+            isDirty: true,
+            revision: state.revision + 1,
+            saveState: "idle" as const,
+          };
+        });
+      },
 
-            setSaveState: (saveState) => set({ saveState }),
+      updateTranscriptSegmentText: (segmentId, text) => {
+        const currentSegment = get().activeProject?.transcript?.segments.find(
+          (segment) => segment.id === segmentId,
+        );
+        if (!currentSegment || !applyTranscriptTextEdit(currentSegment, text).changed) return;
 
-            saveProject: async () => {
-                const { activeProject, projectPath } = get();
-                if (!activeProject || !projectPath) return;
+        get().updateProject((draft) => {
+          if (!draft.transcript) return;
+          const index = draft.transcript.segments.findIndex((segment) => segment.id === segmentId);
+          if (index === -1) return;
+          const result = applyTranscriptTextEdit(draft.transcript.segments[index], text);
+          if (!result.changed) return;
+          draft.transcript = {
+            ...draft.transcript,
+            segments: draft.transcript.segments.map((segment, segmentIndex) =>
+              segmentIndex === index ? result.segment : segment,
+            ),
+          };
+          draft.artifacts = markTranscriptDependentArtifactsStale(draft.artifacts);
+          draft.updatedAt = Date.now();
+        });
+      },
 
-                set({ saveState: 'saving' });
-                try {
-                    await invoke('save_project_to_disk', { 
-                        path: projectPath, 
-                        project: activeProject 
-                    });
-                    set({ saveState: 'saved', isDirty: false });
-                } catch (e) {
-                    console.error('Failed to save project:', e);
-                    set({ saveState: 'error' });
-                }
-            },
+      revertTranscriptSegmentText: (segmentId) => {
+        const currentSegment = get().activeProject?.transcript?.segments.find(
+          (segment) => segment.id === segmentId,
+        );
+        if (!currentSegment || currentSegment.originalText === undefined) return;
 
-            checkMediaStatus: async () => {
-                const { activeProject } = get();
-                if (!activeProject) return;
+        get().updateProject((draft) => {
+          if (!draft.transcript) return;
+          const index = draft.transcript.segments.findIndex((segment) => segment.id === segmentId);
+          if (index === -1) return;
+          const segment = draft.transcript.segments[index];
+          const reverted = revertTranscriptTextEdit(segment);
+          if (reverted === segment) return;
+          draft.transcript = {
+            ...draft.transcript,
+            segments: draft.transcript.segments.map((candidate, segmentIndex) =>
+              segmentIndex === index ? reverted : candidate,
+            ),
+          };
+          draft.updatedAt = Date.now();
+        });
+      },
 
-                const missingIds: string[] = [];
-                for (const media of activeProject.media) {
-                    try {
-                        const exists = await invoke<boolean>('check_media_exists', { path: media.path });
-                        if (!exists) {
-                            missingIds.push(media.id);
-                        }
-                    } catch (e) {
-                        console.error(`Failed to check media path ${media.path}:`, e);
-                        missingIds.push(media.id);
-                    }
-                }
-                set({ missingMediaIds: missingIds });
-            },
+      setSaveState: (saveState) => set({ saveState }),
 
-            relinkMedia: (mediaId, newPath, newMetadata) => {
-                get().updateProject((draft) => {
-                    const mediaIndex = draft.media.findIndex(m => m.id === mediaId);
-                    if (mediaIndex !== -1) {
-                        draft.media[mediaIndex] = {
-                            ...draft.media[mediaIndex],
-                            path: newPath,
-                            metadata: newMetadata,
-                        };
-                    }
-                });
-                
-                // Remove from missing list
-                set((state) => ({
-                    missingMediaIds: state.missingMediaIds.filter(id => id !== mediaId)
-                }));
-            }
-        }),
-        {
-            partialize: (state) => ({ activeProject: state.activeProject }),
-            limit: 100, // Limit history to 100 steps
+      saveProject: async () => {
+        const { activeProject, projectPath, revision } = get();
+        if (!activeProject || !projectPath) return;
+        set({ saveState: "saving", lastSaveError: null });
+        try {
+          await saveProjectToDisk(projectPath, activeProject);
+          if (get().revision === revision) set({ saveState: "saved", isDirty: false });
+        } catch (error) {
+          console.error("Failed to save project:", error);
+          set({ saveState: "error", lastSaveError: error instanceof Error ? error.message : String(error) });
         }
-    )
+      },
+
+      saveProjectAs: async (path) => {
+        const { activeProject, revision } = get();
+        if (!activeProject) return;
+        set({ saveState: "saving", lastSaveError: null });
+        try {
+          await saveProjectToDisk(path, activeProject);
+          if (get().revision === revision) set({ projectPath: path, saveState: "saved", isDirty: false });
+        } catch (error) {
+          console.error("Failed to save project as:", error);
+          set({ saveState: "error", lastSaveError: error instanceof Error ? error.message : String(error) });
+        }
+      },
+
+      checkMediaStatus: async () => {
+        const { activeProject, revision } = get();
+        if (!activeProject) return;
+        const missingIds: string[] = [];
+        for (const media of activeProject.media) {
+          try {
+            if (!(await checkMediaExists(media.path))) missingIds.push(media.id);
+          } catch (error) {
+            console.error(`Failed to check media path ${media.path}:`, error);
+            missingIds.push(media.id);
+          }
+        }
+        if (get().revision === revision) set({ missingMediaIds: missingIds });
+      },
+
+      relinkMedia: (mediaId, newPath, newMetadata) => {
+        get().updateProject((draft) => {
+          const mediaIndex = draft.media.findIndex((media) => media.id === mediaId);
+          if (mediaIndex !== -1) {
+            draft.media[mediaIndex] = {
+              ...draft.media[mediaIndex],
+              path: newPath,
+              metadata: newMetadata,
+            };
+          }
+        });
+        set((state) => ({ missingMediaIds: state.missingMediaIds.filter((id) => id !== mediaId) }));
+      },
+    }),
+    {
+      partialize: (state) => ({ activeProject: state.activeProject }),
+      limit: 100,
+    },
+  ),
 );
