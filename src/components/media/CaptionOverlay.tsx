@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { CaptionCue, CaptionStyle, EditPlan } from "@/types/project";
 import { buildCutIndex, findActiveCut } from "@/hooks/useCutPreview";
+import { CAPTION_SAFE_AREA, mapCaptionStyleToOverlay } from "@/lib/caption-style";
 
 interface CaptionOverlayProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -51,6 +52,11 @@ export const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
     return null;
   }, [sortedCues, currentTimeMs]);
 
+  const overlayStyle = useMemo(
+    () => (styleModel ? mapCaptionStyleToOverlay(styleModel) : null),
+    [styleModel],
+  );
+
   const cutIndex = useMemo(
     () => (editPlan ? buildCutIndex(editPlan, sourceMediaId) : []),
     [editPlan, sourceMediaId],
@@ -61,15 +67,9 @@ export const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
     return Boolean(findActiveCut(cutIndex, currentTimeMs));
   }, [cutIndex, currentTimeMs]);
 
-  if (!styleModel || !activeCue || isInsideCut) {
+  if (!overlayStyle || !activeCue || isInsideCut) {
     return null;
   }
-
-  const clamp = (value: number, min: number, max: number) =>
-    Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : min;
-  const positionX = clamp(styleModel.positionXVw, 0.05, 0.95);
-  const positionY = clamp(styleModel.positionYVh, 0.1, 0.95);
-  const fontSize = clamp(styleModel.fontSizeVh, 0.01, 0.25);
 
   // Convert CaptionStyle to React CSS with the same normalized safe-area
   // semantics used by the native mapper. The overlay width is bounded so
@@ -77,11 +77,12 @@ export const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
   // Container query (`@container`) is required on the parent wrapper for `cqh` to work.
   const containerStyle: React.CSSProperties = {
     position: "absolute",
-    left: `${positionX * 100}%`,
-    top: `${positionY * 100}%`,
+    left: `${overlayStyle.positionX * 100}%`,
+    top: `${overlayStyle.positionY * 100}%`,
     transform: "translate(-50%, -100%)", // Align bottom-center
-    width: "90%",
-    maxWidth: "90%",
+    width: `${CAPTION_SAFE_AREA.maxWidth * 100}%`,
+    maxWidth: `${CAPTION_SAFE_AREA.maxWidth * 100}%`,
+    maxHeight: "80%",
     overflow: "hidden",
     pointerEvents: "none",
     display: "flex",
@@ -92,42 +93,44 @@ export const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
   };
 
   // Override transform based on alignment
-  if (styleModel.alignment === "left") {
+  if (overlayStyle.alignment === "left") {
     containerStyle.transform = "translate(0%, -100%)";
     containerStyle.alignItems = "flex-start";
-  } else if (styleModel.alignment === "right") {
+  } else if (overlayStyle.alignment === "right") {
     containerStyle.transform = "translate(-100%, -100%)";
     containerStyle.alignItems = "flex-end";
   }
 
   // Map properties
   const textStyle: React.CSSProperties = {
-    fontFamily: styleModel.fontFamily?.trim() || "Arial, sans-serif",
-    fontWeight: styleModel.fontWeight,
-    fontStyle: styleModel.fontStyle,
-    fontSize: `${fontSize * 100}cqh`,
-    color: styleModel.primaryColor,
-    textAlign: styleModel.alignment as React.CSSProperties["textAlign"],
+    fontFamily: overlayStyle.fontFamily,
+    fontWeight: overlayStyle.fontWeight,
+    fontStyle: overlayStyle.fontStyle,
+    fontSize: `${overlayStyle.fontSize * 100}cqh`,
+    color: overlayStyle.primaryColor,
+    textAlign: overlayStyle.alignment,
     whiteSpace: "pre-wrap", // Respect \n in cues
     overflowWrap: "anywhere",
     lineHeight: 1.15,
   };
 
   // Outline / Stroke (CSS limitation: center stroke vs FFmpeg outer stroke)
-  if (styleModel.outlineColor && styleModel.outlineWidthVh) {
-    textStyle.WebkitTextStroke = `${styleModel.outlineWidthVh * 100}cqh ${styleModel.outlineColor}`;
+  if (overlayStyle.outlineColor && overlayStyle.outlineWidth > 0) {
+    textStyle.WebkitTextStroke = `${overlayStyle.outlineWidth * 100}cqh ${overlayStyle.outlineColor}`;
   }
 
   // Background box
-  if (styleModel.backgroundColor) {
-    textStyle.backgroundColor = styleModel.backgroundColor;
+  if (overlayStyle.backgroundColor) {
+    textStyle.backgroundColor = overlayStyle.backgroundColor;
     textStyle.padding = "1cqh 2cqh";
     textStyle.borderRadius = "0.5cqh";
   }
 
   return (
     <div style={containerStyle}>
-      <span style={textStyle}>{activeCue.text}</span>
+      <span style={textStyle} aria-live="polite">
+        {activeCue.text}
+      </span>
     </div>
   );
 };

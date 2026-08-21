@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { CutSuggestion, SuggestionCard } from "./SuggestionCard";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -61,14 +61,20 @@ export function ReviewControls({
         })),
     [editPlan.actions, mediaId],
   );
-  const [suggestions, setSuggestions] = useState<CutSuggestion[]>(persistedSuggestions);
+  const [metadataById, setMetadataById] = useState<
+    Record<string, Pick<CutSuggestion, "evidence" | "sourceVersion" | "kind" | "reviewRequired">>
+  >({});
+  const suggestions = useMemo(
+    () =>
+      persistedSuggestions.map((suggestion) => ({
+        ...suggestion,
+        ...metadataById[suggestion.action.id],
+      })),
+    [metadataById, persistedSuggestions],
+  );
   const [candidates, setCandidates] = useState<NonSpeechCandidate[]>(analysisCandidates);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSuggestions(persistedSuggestions);
-  }, [persistedSuggestions]);
 
   const handleRunAnalysis = async () => {
     setLoading(true);
@@ -119,14 +125,20 @@ export function ReviewControls({
       if (errors.length > 0) {
         throw new Error(errors.map((issue) => issue.message).join("; "));
       }
-      setSuggestions(
-        result.map((suggestion) => ({
-          ...suggestion,
-          action:
-            generatedActions.find((action) => action.id === suggestion.action.id) ??
-            suggestion.action,
-        })),
-      );
+      setMetadataById((previous) => ({
+        ...previous,
+        ...Object.fromEntries(
+          result.map((suggestion) => [
+            suggestion.action.id,
+            {
+              evidence: suggestion.evidence,
+              sourceVersion: suggestion.sourceVersion,
+              kind: suggestion.kind,
+              reviewRequired: suggestion.reviewRequired,
+            },
+          ]),
+        ),
+      }));
       onEditPlanChange(nextPlan);
     } catch (e) {
       console.error(e);
@@ -137,9 +149,6 @@ export function ReviewControls({
   };
 
   const handleToggle = (id: string, enabled: boolean) => {
-    setSuggestions((prev) =>
-      prev.map((s) => (s.action.id === id ? { ...s, action: { ...s.action, enabled } } : s)),
-    );
     onEditPlanChange({
       ...editPlan,
       actions: editPlan.actions.map((action) =>
@@ -150,7 +159,6 @@ export function ReviewControls({
 
   const handleRemoveAll = () => {
     const suggestionIds = new Set(suggestions.map((suggestion) => suggestion.action.id));
-    setSuggestions((prev) => prev.map((s) => ({ ...s, action: { ...s.action, enabled: false } })));
     onEditPlanChange({
       ...editPlan,
       actions: editPlan.actions.map((action) =>
@@ -163,7 +171,6 @@ export function ReviewControls({
 
   const handleKeepAll = () => {
     const suggestionIds = new Set(suggestions.map((suggestion) => suggestion.action.id));
-    setSuggestions((prev) => prev.map((s) => ({ ...s, action: { ...s.action, enabled: true } })));
     onEditPlanChange({
       ...editPlan,
       actions: editPlan.actions.map((action) =>
