@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useProjectStore } from "../stores/useProjectStore";
 import { MediaImporter } from "../components/media/MediaImporter";
 import { VideoPreview, type VideoPreviewRef } from "../components/media/VideoPreview";
@@ -10,6 +10,7 @@ import { DEFAULT_SILENCE_CONFIG } from "@/types/silence";
 export function Home() {
   const { activeProject, updateProject, missingMediaIds } = useProjectStore();
   const videoPreviewRef = useRef<VideoPreviewRef>(null);
+  const [currentTimeMs, setCurrentTimeMs] = useState(0);
 
   if (!activeProject) {
     return (
@@ -80,8 +81,9 @@ export function Home() {
               editPlan={activeProject.editPlan}
               captionCues={activeProject.captionCues}
               captionStyle={activeProject.captions}
+              onCurrentTimeChange={setCurrentTimeMs}
             />
-            <ExportPanel />
+            <ExportPanel previewStartMs={currentTimeMs} />
           </div>
 
           <div className="h-[600px] w-full max-w-md flex-1">

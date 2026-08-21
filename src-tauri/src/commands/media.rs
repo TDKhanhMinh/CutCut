@@ -205,13 +205,33 @@ fn build_render_args(
     seek_start_ms: Option<u64>,
     seek_duration_ms: Option<u64>,
 ) -> Result<PreparedRender, String> {
+    let preview_window = seek_start_ms
+        .zip(seek_duration_ms)
+        .map(|(start, duration)| {
+            let end = start.saturating_add(duration);
+            (start, end)
+        });
     let mut cut_exprs = Vec::new();
     for action in &project.edit_plan.actions {
         if action.enabled && action.action_type == EditActionType::Cut {
+            let (cut_start_ms, cut_end_ms) =
+                if let Some((window_start, window_end)) = preview_window {
+                    let clipped_start = action.start_ms.max(window_start);
+                    let clipped_end = action.end_ms.min(window_end);
+                    if clipped_start >= clipped_end {
+                        continue;
+                    }
+                    (
+                        clipped_start.saturating_sub(window_start),
+                        clipped_end.saturating_sub(window_start),
+                    )
+                } else {
+                    (action.start_ms, action.end_ms)
+                };
             cut_exprs.push(format!(
                 "between(t,{:.3},{:.3})",
-                action.start_ms as f64 / 1000.0,
-                action.end_ms as f64 / 1000.0
+                cut_start_ms as f64 / 1000.0,
+                cut_end_ms as f64 / 1000.0
             ));
         }
     }
@@ -219,6 +239,15 @@ fn build_render_args(
     let mut vf_filters = vec![format!("scale={video_width}:{video_height}")];
     let mut af_filters = Vec::new();
     let mut cleanup_paths = Vec::new();
+    if let Some(duration_ms) = seek_duration_ms {
+        // `-t` limits demuxing/output, but does not guarantee that a filtered
+        // stream ends at the requested range when select/aselect removes
+        // timestamps. Trim both streams in the planner so preview duration is
+        // deterministic before the final `-shortest` mux decision.
+        let duration_seconds = duration_ms as f64 / 1000.0;
+        vf_filters.push(format!("trim=start=0:end={duration_seconds:.3}"));
+        af_filters.push(format!("atrim=start=0:end={duration_seconds:.3}"));
+    }
     if !cut_exprs.is_empty() {
         let select_expr = format!("not({})", cut_exprs.join("+"));
         vf_filters.extend([
@@ -295,8 +324,11 @@ fn build_render_args(
         },
         "-c:a".into(),
         "aac".into(),
-        output_path,
     ]);
+    if seek_duration_ms.is_some() {
+        args.push("-shortest".into());
+    }
+    args.push(output_path);
     Ok(PreparedRender {
         args,
         cleanup_paths,
@@ -452,7 +484,8 @@ fn path_to_string(path: &Path) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{generate_preview_signature, validate_export_paths};
+    use super::{build_render_args, generate_preview_signature, validate_export_paths};
+    use crate::models::edit_plan::{EditAction, EditActionSource, EditActionType};
     use crate::models::media_info::MediaSourceMetadata;
     use crate::models::project::MediaSource;
     use crate::models::project::Project;
@@ -496,5 +529,42 @@ mod tests {
         let third =
             generate_preview_signature(&project, source.to_str().unwrap(), 0, 3_000).unwrap();
         assert_ne!(first.0, third.0);
+    }
+
+    #[test]
+    fn preview_cut_ranges_are_relative_to_the_seek_window() {
+        let mut project = Project::default();
+        project.edit_plan.actions.push(EditAction {
+            id: "cut-5-6".into(),
+            source_media_id: "media-1".into(),
+            action_type: EditActionType::Cut,
+            start_ms: 5_000,
+            end_ms: 6_000,
+            source: EditActionSource::User,
+            reason: "fixture".into(),
+            confidence: None,
+            enabled: true,
+            created_at: 0,
+            updated_at: 0,
+            payload: None,
+        });
+
+        let prepared = build_render_args(
+            &project,
+            "C:/source.mp4".into(),
+            "C:/preview.mp4".into(),
+            Some(4_000),
+            Some(4_000),
+        )
+        .expect("preview planner should accept a bounded range");
+        assert!(prepared
+            .args
+            .windows(2)
+            .any(|pair| pair[0] == "-vf" && pair[1].contains("between(t,1.000,2.000)")));
+        assert!(prepared
+            .args
+            .windows(2)
+            .any(|pair| pair[0] == "-vf" && pair[1].contains("trim=start=0:end=4.000")));
+        assert!(prepared.args.iter().any(|arg| arg == "-shortest"));
     }
 }

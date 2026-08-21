@@ -100,6 +100,9 @@ BEGIN
 END;
 $$;
 
+-- This function is only invoked by the auth trigger, never by a client RPC.
+REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC;
+
 -- The Edge Function calls this RPC with the service role after JWT
 -- verification. The row lock makes concurrent requests deterministic and the
 -- request id makes retries free of double charging.

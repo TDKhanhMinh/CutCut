@@ -350,7 +350,13 @@ impl SubtitleGenerator {
         let file_name = format!("cutcut_subs_{}.ass", uuid::Uuid::new_v4());
         let file_path = temp_dir.join(file_name);
 
-        std::fs::write(&file_path, content)
+        // libass uses the BOM to reliably detect UTF-8 on Windows. Without it,
+        // Vietnamese continuation bytes can be interpreted as legacy code-page
+        // characters and render as missing glyphs in the exported video.
+        let mut encoded = Vec::with_capacity(3 + content.len());
+        encoded.extend_from_slice(b"\xEF\xBB\xBF");
+        encoded.extend_from_slice(content.as_bytes());
+        std::fs::write(&file_path, encoded)
             .map_err(|e| format!("Failed to write temp subtitle file: {}", e))?;
 
         Ok(file_path)
@@ -520,5 +526,19 @@ mod tests {
         );
         assert!(!content.contains("{\\tag}"));
         assert!(content.contains("hello （／tag）\\Nworld"));
+    }
+
+    #[test]
+    fn temp_ass_file_is_utf8_with_bom_for_windows_libass() {
+        let path = SubtitleGenerator::write_temp_ass_file(
+            "Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,Tiếng Việt",
+        )
+        .expect("temporary ASS file should be written");
+        let bytes = std::fs::read(&path).expect("temporary ASS file should be readable");
+        assert!(bytes.starts_with(b"\xEF\xBB\xBF"));
+        assert!(String::from_utf8(bytes[3..].to_vec())
+            .expect("ASS should remain UTF-8 after the BOM")
+            .contains("Tiếng Việt"));
+        let _ = std::fs::remove_file(path);
     }
 }
