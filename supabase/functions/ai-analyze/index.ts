@@ -117,7 +117,12 @@ function validatePayload(payload: unknown) {
     throw new Error("maxTokens is invalid");
   }
   const temperature = config.temperature ?? 0.1;
-  if (typeof temperature !== "number" || !Number.isFinite(temperature) || temperature < 0 || temperature > 1) {
+  if (
+    typeof temperature !== "number" ||
+    !Number.isFinite(temperature) ||
+    temperature < 0 ||
+    temperature > 1
+  ) {
     throw new Error("temperature is invalid");
   }
   return {
@@ -204,6 +209,16 @@ function validateActions(raw: unknown, input: ReturnType<typeof validatePayload>
   });
 }
 
+type AdminClient = ReturnType<typeof createClient>;
+
+async function releaseQuota(admin: AdminClient, userId: string, requestId: string) {
+  const { error } = await admin.rpc("release_ai_quota", {
+    p_user_id: userId,
+    p_request_id: requestId,
+  });
+  if (error) console.warn("quota release failed", { requestId });
+}
+
 Deno.serve(async (req) => {
   const origin = allowedOrigin(req);
   if (req.method === "OPTIONS") return response({ ok: true }, 200, origin);
@@ -216,6 +231,9 @@ Deno.serve(async (req) => {
   if (declaredLength > MAX_BODY_BYTES) return response({ error: "payload_too_large" }, 413, origin);
 
   let requestId = "unknown";
+  let reservedUserId: string | null = null;
+  let reserved = false;
+  let adminClient: AdminClient | null = null;
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -236,6 +254,7 @@ Deno.serve(async (req) => {
     requestId = payload.requestId;
     if (!serviceKey) return response({ error: "service_unavailable" }, 503, origin);
     const admin = createClient(supabaseUrl, serviceKey);
+    adminClient = admin;
 
     const { data: previous } = await admin
       .from("ai_usage")
@@ -247,19 +266,51 @@ Deno.serve(async (req) => {
     if (cachedResponse && typeof cachedResponse === "object")
       return response(cachedResponse, 200, origin);
 
-    const { data: quotaAvailable, error: quotaCheckError } = await admin.rpc("check_ai_quota", {
+    const { data: reservation, error: reservationError } = await admin.rpc("reserve_ai_quota", {
       p_user_id: user.id,
+      p_request_id: requestId,
     });
-    if (quotaCheckError) {
-      console.error("quota check failed", { requestId });
+    if (reservationError) {
+      console.error("quota reservation failed", { requestId });
       return response({ error: "service_unavailable" }, 503, origin);
     }
-    if (!quotaAvailable) return response({ error: "quota_exceeded" }, 429, origin);
+    if (reservation === "completed") {
+      const { data: completed } = await admin
+        .from("ai_usage")
+        .select("metadata")
+        .eq("user_id", user.id)
+        .eq("request_id", requestId)
+        .maybeSingle();
+      const responseBody = completed?.metadata?.response;
+      if (responseBody && typeof responseBody === "object") {
+        return response(responseBody, 200, origin);
+      }
+      return response({ error: "request_replay_unavailable" }, 409, origin);
+    }
+    if (reservation === "in_flight") {
+      return response({ error: "request_in_progress" }, 409, origin);
+    }
+    if (reservation === "quota_exceeded") {
+      return response({ error: "quota_exceeded" }, 429, origin);
+    }
+    if (reservation === "rate_limited") {
+      return response({ error: "rate_limited" }, 429, origin);
+    }
+    if (reservation !== "reserved") {
+      return response({ error: "request_expired" }, 409, origin);
+    }
+    reservedUserId = user.id;
+    reserved = true;
+    const releaseAndRespond = async (body: unknown, status: number) => {
+      await releaseQuota(admin, user.id, requestId);
+      reserved = false;
+      return response(body, status, origin);
+    };
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!apiKey) return response({ error: "service_unavailable" }, 503, origin);
+    if (!apiKey) return releaseAndRespond({ error: "service_unavailable" }, 503);
     const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-1.5-flash";
-    if (!validModelName(model)) return response({ error: "service_unavailable" }, 503, origin);
+    if (!validModelName(model)) return releaseAndRespond({ error: "service_unavailable" }, 503);
     const transcript = payload.segments
       .map((segment) => `[${segment.startMs}-${segment.endMs}] ${segment.id}: ${segment.text}`)
       .join("\n");
@@ -320,61 +371,63 @@ Deno.serve(async (req) => {
           requestId,
           errorCode: timedOut ? "provider_timeout" : "provider_unavailable",
         });
-        return response(
+        return releaseAndRespond(
           { error: timedOut ? "provider_timeout" : "provider_unavailable" },
           timedOut ? 504 : 502,
-          origin,
         );
       }
     } finally {
       clearTimeout(timeout);
     }
-    if (!providerResponse) return response({ error: "provider_unavailable" }, 502, origin);
+    if (!providerResponse) return releaseAndRespond({ error: "provider_unavailable" }, 502);
     if (!providerResponse.ok) {
       console.warn("Gemini upstream failure", { requestId, status: providerResponse.status });
-      return response(
+      return releaseAndRespond(
         { error: providerResponse.status === 429 ? "rate_limited" : "provider_unavailable" },
         providerResponse.status === 429 ? 429 : 502,
-        origin,
       );
     }
     let providerBody: Record<string, unknown>;
     try {
-      providerBody = await providerResponse.json() as Record<string, unknown>;
+      providerBody = (await providerResponse.json()) as Record<string, unknown>;
     } catch {
       console.warn("Gemini returned a non-JSON response", { requestId });
-      return response({ error: "invalid_provider_output" }, 502, origin);
+      return releaseAndRespond({ error: "invalid_provider_output" }, 502);
     }
     const candidates = Array.isArray(providerBody.candidates) ? providerBody.candidates : [];
     const candidate = candidates[0];
-    const content = candidate && typeof candidate === "object"
-      ? (candidate as Record<string, unknown>).content
-      : undefined;
-    const parts = content && typeof content === "object"
-      ? (content as Record<string, unknown>).parts
-      : undefined;
+    const content =
+      candidate && typeof candidate === "object"
+        ? (candidate as Record<string, unknown>).content
+        : undefined;
+    const parts =
+      content && typeof content === "object"
+        ? (content as Record<string, unknown>).parts
+        : undefined;
     const firstPart = Array.isArray(parts) ? parts[0] : undefined;
-    const text = firstPart && typeof firstPart === "object"
-      ? (firstPart as Record<string, unknown>).text
-      : undefined;
+    const text =
+      firstPart && typeof firstPart === "object"
+        ? (firstPart as Record<string, unknown>).text
+        : undefined;
     let parsed: unknown;
     try {
       parsed = parseProviderJson(text);
     } catch {
       console.warn("Gemini returned invalid JSON", { requestId });
-      return response({ error: "invalid_provider_output" }, 502, origin);
+      return releaseAndRespond({ error: "invalid_provider_output" }, 502);
     }
     let actions: ReturnType<typeof validateActions>;
     try {
       actions = validateActions(parsed, payload);
     } catch {
       console.warn("Gemini output failed canonical validation", { requestId });
-      return response({ error: "invalid_provider_output" }, 502, origin);
+      return releaseAndRespond({ error: "invalid_provider_output" }, 502);
     }
     const usageMetadata = providerBody.usageMetadata;
-    const usageTokens = usageMetadata && typeof usageMetadata === "object"
-      ? (usageMetadata as Record<string, unknown>).totalTokenCount
-      : null;
+    const usageTokens =
+      usageMetadata && typeof usageMetadata === "object"
+        ? (usageMetadata as Record<string, unknown>).totalTokenCount
+        : null;
     const finalResponse = {
       actions,
       summary: "Semantic analysis completed",
@@ -383,7 +436,7 @@ Deno.serve(async (req) => {
       model,
       promptVersion: SEMANTIC_PROMPT_VERSION,
     };
-    const { data: quotaAllowed, error: quotaError } = await admin.rpc("consume_ai_quota", {
+    const { data: quotaAllowed, error: quotaError } = await admin.rpc("finalize_ai_quota", {
       p_user_id: user.id,
       p_request_id: requestId,
       p_provider: "gemini",
@@ -392,24 +445,21 @@ Deno.serve(async (req) => {
       p_input_chars: prompt.length,
       p_tokens_used: Number(finalResponse.usageTokens ?? 0),
       p_cost_estimate: 0,
+      p_prompt_version: SEMANTIC_PROMPT_VERSION,
+      p_latency_ms: Math.max(0, Date.now() - startedAt),
+      p_response: { response: finalResponse, promptVersion: SEMANTIC_PROMPT_VERSION },
     });
     if (quotaError) {
       console.error("quota RPC failed", { requestId });
+      await releaseQuota(admin, user.id, requestId);
+      reserved = false;
       return response({ error: "service_unavailable" }, 503, origin);
     }
-    if (!quotaAllowed) return response({ error: "quota_exceeded" }, 429, origin);
-    const { error: metadataError } = await admin
-      .from("ai_usage")
-      .update({
-        latency_ms: Math.max(0, Date.now() - startedAt),
-        metadata: { response: finalResponse, promptVersion: SEMANTIC_PROMPT_VERSION },
-      })
-      .eq("user_id", user.id)
-      .eq("request_id", requestId);
-    if (metadataError) {
-      console.error("usage metadata persistence failed", { requestId });
-      return response({ error: "service_unavailable" }, 503, origin);
+    if (!quotaAllowed) {
+      reserved = false;
+      return response({ error: "request_expired" }, 409, origin);
     }
+    reserved = false;
     console.info("AI analysis completed", {
       requestId,
       userId: user.id,
@@ -421,6 +471,9 @@ Deno.serve(async (req) => {
     });
     return response(finalResponse, 200, origin);
   } catch (error) {
+    if (reserved && adminClient && reservedUserId) {
+      await releaseQuota(adminClient, reservedUserId, requestId);
+    }
     console.warn("AI analysis request rejected", {
       requestId,
       reason: error instanceof Error ? error.message : "unknown",

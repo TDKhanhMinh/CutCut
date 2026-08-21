@@ -16,7 +16,9 @@ foreach ($required in @(
   "AbortController",
   "x-goog-api-key",
   "validateActions",
-  "consume_ai_quota",
+  "reserve_ai_quota",
+  "finalize_ai_quota",
+  "release_ai_quota",
   "OPERATION_TYPE"
 )) {
   if ($edge -notmatch [regex]::Escape($required)) {

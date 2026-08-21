@@ -7,6 +7,25 @@ import type { AIAnalysisRequest, AIAnalysisResponse } from "@/types/ai";
 import type { EditAction, EditPlan, MediaSource, Transcript } from "@/types/project";
 import { validateEditPlan } from "@/services/project";
 
+export interface AIQuotaStatus {
+  requestsUsed: number;
+  requestLimit: number;
+  requestsRemaining: number;
+  windowUsed: number;
+  windowLimit: number;
+  windowRemaining: number;
+  entitlementActive: boolean;
+  entitlementExpiresAt: string | null;
+}
+
+export async function getAIQuotaStatus(): Promise<AIQuotaStatus> {
+  const user = useAuthStore.getState().user;
+  if (!user) throw new Error("auth_required");
+  const { data, error } = await authService.invokeFunction<AIQuotaStatus>("ai-quota-status", {});
+  if (error || !data) throw new Error(error?.message ?? "quota_unavailable");
+  return data;
+}
+
 function requestId(): string {
   return (
     globalThis.crypto?.randomUUID?.() ?? `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`

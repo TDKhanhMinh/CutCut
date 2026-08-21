@@ -48,7 +48,7 @@ if ($migrationSql -match "(?i)(storage\.buckets|INSERT\s+INTO\s+storage|CREATE\s
 }
 
 $entitlementStore = Get-Content -LiteralPath (Join-Path $Root "src/stores/useEntitlementStore.ts") -Raw
-if ($entitlementStore -notmatch "\.select\('plan_id, features, expires_at'\)") {
+if ($entitlementStore -notmatch '\.select\(([''\"])plan_id, features, expires_at\1\)') {
   $violations.Add("Entitlement client must query the canonical plan_id/features schema")
 }
 if ($entitlementStore -match "\.select\('plan, capabilities, expires_at'\)") {
