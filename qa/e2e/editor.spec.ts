@@ -9,6 +9,8 @@ import {
   decideCutPreview,
 } from '../../src/hooks/useCutPreview';
 import type { EditPlan } from '../../src/types/project';
+import { mapCaptionStyleToOverlay } from '../../src/lib/caption-style';
+import { findActiveCaptionCue, sortCaptionCues } from '../../src/lib/caption-overlay';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -142,4 +144,37 @@ test('cut preview skips merged enabled ranges without mutating source playback s
   applyCutPreviewDecision(endVideo, endOfMedia);
   expect(paused).toBe(true);
   expect(endVideo.currentTime).toBe(10);
+});
+
+test('caption overlay follows cue timing, Unicode text and canonical style edits', () => {
+  const cues = [
+    { id: 'late', sourceSegmentIds: [], startMs: 2_000, endMs: 3_000, text: 'Xin chào thế giới', isManualModified: false },
+    { id: 'invalid', sourceSegmentIds: [], startMs: 3_000, endMs: 2_000, text: 'ignored', isManualModified: false },
+    { id: 'early', sourceSegmentIds: [], startMs: 0, endMs: 1_000, text: 'Việt Nam', isManualModified: false },
+  ];
+  const sorted = sortCaptionCues(cues);
+  expect(sorted.map((cue) => cue.id)).toEqual(['early', 'late']);
+  expect(findActiveCaptionCue(sorted, 500)?.text).toBe('Việt Nam');
+  expect(findActiveCaptionCue(sorted, 2_500)?.text).toBe('Xin chào thế giới');
+  expect(findActiveCaptionCue(sorted, 3_000)).toBeNull();
+
+  const baseStyle = {
+    presetId: '16-9',
+    fontFamily: 'Arial',
+    fontWeight: 700,
+    fontStyle: 'normal',
+    fontSizeVh: 0.06,
+    positionXVw: 0.5,
+    positionYVh: 0.85,
+    alignment: 'center',
+    primaryColor: '#FFFFFF',
+    outlineColor: '#000000',
+    outlineWidthVh: 0.01,
+    backgroundColor: null,
+    backgroundOpacity: null,
+  } as const;
+  const editedStyle = mapCaptionStyleToOverlay({ ...baseStyle, positionXVw: 1.5, alignment: 'right' });
+  expect(editedStyle.positionX).toBe(0.95);
+  expect(editedStyle.alignment).toBe('right');
+  expect(editedStyle.fontFamily).toBe('Arial');
 });

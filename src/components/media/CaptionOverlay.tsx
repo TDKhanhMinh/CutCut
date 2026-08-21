@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { CaptionCue, CaptionStyle, EditPlan } from "@/types/project";
 import { buildCutIndex, findActiveCut } from "@/hooks/useCutPreview";
 import { CAPTION_SAFE_AREA, mapCaptionStyleToOverlay } from "@/lib/caption-style";
+import { findActiveCaptionCue, sortCaptionCues } from "@/lib/caption-overlay";
 
 interface CaptionOverlayProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -34,22 +35,10 @@ export const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
   }, [videoRef]);
 
   // Fast lookup for active cue
-  const sortedCues = useMemo(
-    () => [...cues].filter((cue) => cue.endMs > cue.startMs).sort((a, b) => a.startMs - b.startMs),
-    [cues],
-  );
+  const sortedCues = useMemo(() => sortCaptionCues(cues), [cues]);
 
   const activeCue = useMemo(() => {
-    let low = 0;
-    let high = sortedCues.length - 1;
-    while (low <= high) {
-      const middle = Math.floor((low + high) / 2);
-      const cue = sortedCues[middle];
-      if (currentTimeMs < cue.startMs) high = middle - 1;
-      else if (currentTimeMs >= cue.endMs) low = middle + 1;
-      else return cue;
-    }
-    return null;
+    return findActiveCaptionCue(sortedCues, currentTimeMs);
   }, [sortedCues, currentTimeMs]);
 
   const overlayStyle = useMemo(
