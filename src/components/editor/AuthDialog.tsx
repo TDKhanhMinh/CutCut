@@ -8,8 +8,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabase";
+import { Input } from "@/components/ui/input";
 import { useI18n } from "@/i18n";
+import { useAuthStore } from "@/stores/useAuthStore";
 
 interface AuthDialogProps {
   open: boolean;
@@ -18,6 +19,7 @@ interface AuthDialogProps {
 
 export function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
   const { t } = useI18n();
+  const { signIn, signUp } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -31,19 +33,16 @@ export function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        // Sign up success, typically Supabase auto signs in if email confirmation is off
-        // Or tells user to check email. For this prototype we assume auto sign-in or success.
+        await signUp(email, password);
         onOpenChange(false);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        await signIn(email, password);
         onOpenChange(false);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("auth.failed"));
     } finally {
+      setPassword("");
       setLoading(false);
     }
   };
@@ -69,12 +68,11 @@ export function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
             <label className="text-sm font-medium" htmlFor="email">
               {t("auth.email")}
             </label>
-            <input
+            <Input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="you@example.com"
               required
             />
@@ -84,12 +82,11 @@ export function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
             <label className="text-sm font-medium" htmlFor="password">
               {t("auth.password")}
             </label>
-            <input
+            <Input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               required
             />
           </div>

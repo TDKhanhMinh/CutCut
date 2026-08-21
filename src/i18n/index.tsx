@@ -46,6 +46,8 @@ const resources: Record<Locale, Record<string, TranslationValue>> = {
     "home.description":
       "Local file dialog, FFprobe metadata, local video preview and FFmpeg export jobs.",
     "home.offline": "Offline / Signed Out",
+    "home.sessionExpired": "Session expired — local mode",
+    "home.cloudUnavailable": "Cloud unavailable — local mode",
     "home.signIn": "Sign In",
     "home.signOut": "Sign Out",
     "home.undo": "Undo",
@@ -273,6 +275,8 @@ const resources: Record<Locale, Record<string, TranslationValue>> = {
     "home.description":
       "Dialog file local, metadata FFprobe, preview video local và job export FFmpeg.",
     "home.offline": "Offline / Đã đăng xuất",
+    "home.sessionExpired": "Session hết hạn — chế độ local",
+    "home.cloudUnavailable": "Cloud không khả dụng — chế độ local",
     "home.signIn": "Đăng nhập",
     "home.signOut": "Đăng xuất",
     "home.undo": "Hoàn tác",

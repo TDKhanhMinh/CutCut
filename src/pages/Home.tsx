@@ -22,7 +22,7 @@ export function Home() {
     useProjectStore.temporal,
     (state) => state,
   );
-  const { user, isInitialized, initialize, signOut } = useAuthStore();
+  const { user, status: authStatus, isInitialized, initialize, signOut } = useAuthStore();
   const { plan, loading: entitlementLoading } = useEntitlementStore();
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
@@ -73,7 +73,15 @@ export function Home() {
                 </span>
               </span>
             ) : (
-              <span className="mr-2 text-sm text-muted-foreground">{t("home.offline")}</span>
+              <span className="mr-2 text-sm text-muted-foreground">
+                {!isInitialized || authStatus === "initializing"
+                  ? t("common.loading")
+                  : authStatus === "session_expired"
+                    ? t("home.sessionExpired")
+                    : authStatus === "offline"
+                      ? t("home.cloudUnavailable")
+                      : t("home.offline")}
+              </span>
             )}
             {user ? (
               <Button variant="outline" size="sm" onClick={() => void signOut()}>

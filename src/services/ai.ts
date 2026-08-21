@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { supabase } from "@/lib/supabase";
+import { authService } from "@/services/auth";
 import { useAIConfigStore } from "@/stores/useAIConfigStore";
 import type { AIAnalysisRequest, AIAnalysisResponse } from "@/types/ai";
 import type { EditAction, EditPlan, MediaSource, Transcript } from "@/types/project";
@@ -38,9 +38,10 @@ export async function analyzeTranscript(
   if (useAIConfigStore.getState().mode === "byok") {
     return invoke<AIAnalysisResponse>("call_gemini_direct", { request });
   }
-  const { data, error } = await supabase.functions.invoke<AIAnalysisResponse>("ai-analyze", {
-    body: request,
-  });
+  const { data, error } = await authService.invokeFunction<AIAnalysisResponse>(
+    "ai-analyze",
+    request as unknown as Record<string, unknown>,
+  );
   if (error || !data) throw new Error(error?.message ?? "provider_unavailable");
   return data;
 }
