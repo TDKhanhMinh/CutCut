@@ -16,6 +16,16 @@ export interface CutSeekTarget {
   pauseAtEnd: boolean;
 }
 
+export type CutPreviewDecision =
+  | { kind: "noop"; nextLastSeekTarget: number | null }
+  | { kind: "seek"; targetMs: number; nextLastSeekTarget: number }
+  | { kind: "pause"; targetMs: number; nextLastSeekTarget: null };
+
+export interface CutPreviewVideoLike {
+  currentTime: number;
+  pause: () => void;
+}
+
 /**
  * Tolerance (ms) used to detect re-entry into a cut region right after a seek.
  * Without this, the `timeupdate` event can fire before the browser commits the
@@ -114,6 +124,53 @@ export function resolveCutSeekTarget(
   };
 }
 
+/**
+ * Resolve one playback tick into a side-effect-free decision. Keeping this
+ * policy separate from the DOM event handler makes the seek/loop/end-of-media
+ * behavior executable in the browser test harness as well as in the hook.
+ */
+export function decideCutPreview(
+  cutIndex: CutInterval[],
+  currentMs: number,
+  durationMs: number | null,
+  lastSeekTarget: number | null,
+): CutPreviewDecision {
+  if (!Number.isFinite(currentMs) || cutIndex.length === 0) {
+    return { kind: "noop", nextLastSeekTarget: lastSeekTarget };
+  }
+
+  if (lastSeekTarget !== null) {
+    if (Math.abs(currentMs - lastSeekTarget) < SEEK_TOLERANCE_MS) {
+      return { kind: "noop", nextLastSeekTarget: lastSeekTarget };
+    }
+  }
+
+  const activeCut = findActiveCut(cutIndex, currentMs);
+  if (!activeCut) return { kind: "noop", nextLastSeekTarget: null };
+
+  const resolved = resolveCutSeekTarget(activeCut, currentMs, durationMs);
+  if (resolved.pauseAtEnd) {
+    return { kind: "pause", targetMs: resolved.targetMs, nextLastSeekTarget: null };
+  }
+  if (resolved.targetMs <= currentMs) {
+    return { kind: "noop", nextLastSeekTarget: null };
+  }
+  return {
+    kind: "seek",
+    targetMs: resolved.targetMs,
+    nextLastSeekTarget: resolved.targetMs,
+  };
+}
+
+/** Apply the controller decision to the browser video element boundary. */
+export function applyCutPreviewDecision(
+  video: CutPreviewVideoLike,
+  decision: CutPreviewDecision,
+): void {
+  if (decision.kind === "pause") video.pause();
+  if (decision.kind !== "noop") video.currentTime = decision.targetMs / 1000;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Hook
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,35 +227,16 @@ export function useCutPreview({
 
     const currentMs = video.currentTime * 1000;
 
-    // Loop protection: if we just seeked to `lastSeekTargetRef`, ignore events
-    // until the playhead has moved at least SEEK_TOLERANCE_MS past the seek target.
-    if (lastSeekTargetRef.current !== null) {
-      const distFromLastSeek = Math.abs(currentMs - lastSeekTargetRef.current);
-      if (distFromLastSeek < SEEK_TOLERANCE_MS) {
-        return; // still in tolerance window — skip handling
-      }
-      // Tolerance window passed — clear the lock
-      lastSeekTargetRef.current = null;
-    }
-
-    const activeCut = findActiveCut(cutIndexRef.current, currentMs);
-    if (!activeCut) return;
-
-    // Seek to the end of this cut
     const durationMs =
       Number.isFinite(video.duration) && video.duration >= 0 ? video.duration * 1000 : null;
-    const resolved = resolveCutSeekTarget(activeCut, currentMs, durationMs);
-    if (resolved.pauseAtEnd) {
-      video.pause();
-      if (durationMs !== null) video.currentTime = durationMs / 1000;
-      lastSeekTargetRef.current = null;
-      return;
-    }
-
-    // Perform the skip seek
-    if (resolved.targetMs <= currentMs) return;
-    lastSeekTargetRef.current = resolved.targetMs;
-    video.currentTime = resolved.targetMs / 1000;
+    const decision = decideCutPreview(
+      cutIndexRef.current,
+      currentMs,
+      durationMs,
+      lastSeekTargetRef.current,
+    );
+    lastSeekTargetRef.current = decision.nextLastSeekTarget;
+    applyCutPreviewDecision(video, decision);
   }, [bypassRef, enabled, videoRef]);
 
   // Attach / detach the timeupdate listener

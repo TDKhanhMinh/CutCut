@@ -3,6 +3,12 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { redactTelemetryProperties } from '../../src/services/telemetry';
+import {
+  applyCutPreviewDecision,
+  buildCutIndex,
+  decideCutPreview,
+} from '../../src/hooks/useCutPreview';
+import type { EditPlan } from '../../src/types/project';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -102,4 +108,38 @@ test('telemetry allowlist redacts paths, JWTs and API keys', async () => {
   expect(redacted.durationMs).toBe(42);
   expect(String(redacted.errorCode)).not.toContain('eyJheader');
   expect(String(redacted.errorCode)).not.toContain('C:\\Users\\alice');
+});
+
+test('cut preview skips merged enabled ranges without mutating source playback state', () => {
+  const plan = {
+    actions: [
+      { id: 'cut-a', type: 'cut', sourceMediaId: 'media-1', startMs: 1_000, endMs: 2_000, enabled: true },
+      { id: 'cut-b', type: 'cut', sourceMediaId: 'media-1', startMs: 1_800, endMs: 3_000, enabled: true },
+      { id: 'other-media', type: 'cut', sourceMediaId: 'media-2', startMs: 4_000, endMs: 5_000, enabled: true },
+      { id: 'disabled', type: 'cut', sourceMediaId: 'media-1', startMs: 6_000, endMs: 7_000, enabled: false },
+    ],
+  } as EditPlan;
+
+  const cutIndex = buildCutIndex(plan, 'media-1');
+  expect(cutIndex).toEqual([{ startMs: 1_000, endMs: 3_000 }]);
+
+  const firstTick = decideCutPreview(cutIndex, 1_500, 10_000, null);
+  expect(firstTick).toEqual({ kind: 'seek', targetMs: 3_000, nextLastSeekTarget: 3_000 });
+  const video = { currentTime: 1.5, pause: () => undefined };
+  applyCutPreviewDecision(video, firstTick);
+  expect(video.currentTime).toBe(3);
+
+  const loopGuardTick = decideCutPreview(cutIndex, 2_950, 10_000, 3_000);
+  expect(loopGuardTick).toEqual({ kind: 'noop', nextLastSeekTarget: 3_000 });
+
+  const outsideCut = decideCutPreview(cutIndex, 3_200, 10_000, 3_000);
+  expect(outsideCut).toEqual({ kind: 'noop', nextLastSeekTarget: null });
+
+  const endOfMedia = decideCutPreview([{ startMs: 9_000, endMs: 12_000 }], 9_500, 10_000, null);
+  expect(endOfMedia).toEqual({ kind: 'pause', targetMs: 10_000, nextLastSeekTarget: null });
+  let paused = false;
+  const endVideo = { currentTime: 9.5, pause: () => { paused = true; } };
+  applyCutPreviewDecision(endVideo, endOfMedia);
+  expect(paused).toBe(true);
+  expect(endVideo.currentTime).toBe(10);
 });
