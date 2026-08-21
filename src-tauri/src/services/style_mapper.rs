@@ -1,5 +1,10 @@
 use crate::models::project::CaptionStyle;
 
+const SAFE_AREA_MIN_X: f64 = 0.05;
+const SAFE_AREA_MAX_X: f64 = 0.95;
+const SAFE_AREA_MIN_Y: f64 = 0.10;
+const SAFE_AREA_MAX_Y: f64 = 0.95;
+
 impl CaptionStyle {
     pub fn get_default_16_9_preset() -> Self {
         CaptionStyle {
@@ -46,8 +51,8 @@ impl CaptionStyle {
         let font_size = (self.font_size_vh.clamp(0.01, 0.25) * video_height as f64)
             .round()
             .max(1.0) as u32;
-        let x = self.position_x_vw.clamp(0.0, 1.0);
-        let y = self.position_y_vh.clamp(0.0, 1.0);
+        let x = self.position_x_vw.clamp(SAFE_AREA_MIN_X, SAFE_AREA_MAX_X);
+        let y = self.position_y_vh.clamp(SAFE_AREA_MIN_Y, SAFE_AREA_MAX_Y);
         let primary_color = normalize_color(&self.primary_color, "FFFFFF");
         let font_reference = normalize_font_reference(&self.font_family);
 
@@ -167,5 +172,16 @@ mod tests {
         assert!(style
             .to_ffmpeg_drawtext_args(1920, 1080)
             .contains("fontfile='Arial'"));
+    }
+
+    #[test]
+    fn positions_are_clamped_to_the_preview_safe_area() {
+        let mut style = CaptionStyle::get_default_16_9_preset();
+        style.position_x_vw = 0.0;
+        style.position_y_vh = 1.0;
+        style.alignment = "left".into();
+        let args = style.to_ffmpeg_drawtext_args(1920, 1080);
+        assert!(args.contains("x='(w*0.05)'"));
+        assert!(args.contains("y='(h*0.95)-text_h'"));
     }
 }
