@@ -59,6 +59,9 @@ pub struct AIAnalysisResponse {
 
 #[derive(Debug, Error)]
 pub enum AIProviderError {
+    #[error("Invalid AI analysis request: {0}")]
+    InvalidRequest(String),
+
     #[error("Network error: {0}")]
     Network(String),
 

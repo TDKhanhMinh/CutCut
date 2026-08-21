@@ -1,3 +1,4 @@
+pub mod gemini;
 pub mod mock;
 pub mod service;
 pub mod supabase;
