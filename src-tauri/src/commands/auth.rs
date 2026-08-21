@@ -14,6 +14,14 @@ fn secure_entry(key: &str) -> Result<Entry, String> {
     Entry::new("cutcut", service_key).map_err(|error| error.to_string())
 }
 
+fn public_session_key(key: &str) -> Result<(), String> {
+    if key == SUPABASE_AUTH_KEY {
+        Ok(())
+    } else {
+        Err("Unsupported public secure token key".into())
+    }
+}
+
 pub(crate) fn read_secure_value(key: &str) -> Result<Option<String>, String> {
     let entry = secure_entry(key)?;
     match entry.get_password() {
@@ -77,15 +85,18 @@ pub async fn clear_auth_session(app: AppHandle) {
 
 #[tauri::command]
 pub fn set_secure_token(key: String, value: String) -> Result<(), String> {
+    public_session_key(&key)?;
     write_secure_value(&key, &value)
 }
 
 #[tauri::command]
 pub fn get_secure_token(key: String) -> Result<Option<String>, String> {
+    public_session_key(&key)?;
     read_secure_value(&key)
 }
 
 #[tauri::command]
 pub fn delete_secure_token(key: String) -> Result<(), String> {
+    public_session_key(&key)?;
     delete_secure_value(&key)
 }
