@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { supabase } from '../lib/supabase';
+import { normalizeEntitlement } from '../lib/entitlements';
 
 export type Plan = 'FREE' | 'PRO' | 'ENTERPRISE';
 
@@ -50,7 +51,7 @@ export const useEntitlementStore = create<EntitlementState>((set, get) => ({
       // 3. Fetch entitlement from server — do NOT mock
       const { data, error } = await supabase
         .from('entitlements')
-        .select('plan, capabilities, expires_at')
+        .select('plan_id, features, expires_at')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -58,9 +59,7 @@ export const useEntitlementStore = create<EntitlementState>((set, get) => ({
 
       if (error) throw error;
 
-      const plan = (data?.plan ?? 'FREE') as Plan;
-      const capabilities: string[] = data?.capabilities ?? [];
-      const expiresAt: string | null = data?.expires_at ?? null;
+      const { plan, capabilities, expiresAt } = normalizeEntitlement(data);
 
       set({ plan, capabilities, expiresAt, loading: false });
 

@@ -11,6 +11,7 @@ import {
 import type { EditPlan } from '../../src/types/project';
 import { mapCaptionStyleToOverlay } from '../../src/lib/caption-style';
 import { findActiveCaptionCue, sortCaptionCues } from '../../src/lib/caption-overlay';
+import { normalizeEntitlement } from '../../src/lib/entitlements';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -177,4 +178,24 @@ test('caption overlay follows cue timing, Unicode text and canonical style edits
   expect(editedStyle.positionX).toBe(0.95);
   expect(editedStyle.alignment).toBe('right');
   expect(editedStyle.fontFamily).toBe('Arial');
+});
+
+test('normalizes the canonical Supabase entitlement schema without unlocking malformed features', () => {
+  expect(normalizeEntitlement({
+    plan_id: 'pro',
+    features: { FEATURE_CLOUD_AI: true, FEATURE_BATCH_EXPORT: false },
+    expires_at: '2026-09-01T00:00:00Z',
+  })).toEqual({
+    plan: 'PRO',
+    capabilities: ['FEATURE_CLOUD_AI'],
+    expiresAt: '2026-09-01T00:00:00Z',
+  });
+
+  expect(normalizeEntitlement({ plan_id: 'admin', features: { bypass: true } })).toEqual({
+    plan: 'FREE',
+    capabilities: ['bypass'],
+    expiresAt: null,
+  });
+  expect(normalizeEntitlement({ plan_id: 'PRO', features: { capabilities: ['FEATURE_CLOUD_AI', 7] } }))
+    .toEqual({ plan: 'PRO', capabilities: ['FEATURE_CLOUD_AI'], expiresAt: null });
 });
