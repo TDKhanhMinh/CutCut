@@ -36,12 +36,20 @@ const SEEK_TOLERANCE_MS = 150;
  * haven't been round-tripped through the validator yet.
  */
 export function buildCutIndex(plan: EditPlan, sourceMediaId?: string): CutInterval[] {
+  const candidateActions = plan.actions.filter(
+    (action) => action.enabled && action.type === "cut" && action.sourceMediaId.trim().length > 0,
+  );
+  const sourceIds = new Set(candidateActions.map((action) => action.sourceMediaId));
+  // Never let an unspecified preview source skip cuts from multiple media
+  // sources. Single-source projects remain backwards compatible.
+  const safeSourceId = sourceMediaId?.trim() || (sourceIds.size === 1 ? [...sourceIds][0] : null);
   const raw: CutInterval[] = plan.actions
     .filter(
       (action) =>
         action.enabled &&
         action.type === "cut" &&
-        (!sourceMediaId || action.sourceMediaId === sourceMediaId) &&
+        safeSourceId !== null &&
+        action.sourceMediaId === safeSourceId &&
         Number.isFinite(action.startMs) &&
         Number.isFinite(action.endMs) &&
         action.startMs >= 0 &&

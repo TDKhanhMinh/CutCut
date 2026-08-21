@@ -104,6 +104,8 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(funct
         return applySeek(video, requestedTimeMs);
       },
       seekTo: (requestedTimeMs) => {
+        rangeRef.current = null;
+        bypassCutPreviewRef.current = false;
         void (
           videoRef.current &&
           (videoRef.current.readyState < 1
@@ -214,7 +216,11 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(funct
           onSeeked={handleUserSeek}
           onPlay={() => onPlaybackChange?.(true)}
           onPause={() => onPlaybackChange?.(false)}
-          onEnded={() => onPlaybackChange?.(false)}
+          onEnded={() => {
+            rangeRef.current = null;
+            bypassCutPreviewRef.current = false;
+            onPlaybackChange?.(false);
+          }}
         />
         {showCaptions && hasCaptions && (
           <CaptionOverlay
