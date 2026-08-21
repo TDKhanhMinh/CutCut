@@ -100,3 +100,15 @@ pub fn delete_secure_token(key: String) -> Result<(), String> {
     public_session_key(&key)?;
     delete_secure_value(&key)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{public_session_key, GEMINI_BYOK_KEY, SUPABASE_AUTH_KEY};
+
+    #[test]
+    fn public_secure_token_boundary_only_allows_auth_session() {
+        assert!(public_session_key(SUPABASE_AUTH_KEY).is_ok());
+        assert!(public_session_key(GEMINI_BYOK_KEY).is_err());
+        assert!(public_session_key("unknown").is_err());
+    }
+}
