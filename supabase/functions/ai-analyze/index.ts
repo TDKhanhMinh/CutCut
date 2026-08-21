@@ -9,6 +9,8 @@ const MAX_TOTAL_TEXT = 100_000;
 const MAX_INSTRUCTIONS = 4_000;
 const MAX_ACTIONS = 256;
 const PROVIDER_TIMEOUT_MS = 30_000;
+const MAX_MODEL_NAME = 64;
+const OPERATION_TYPE = "semantic_edit_analysis";
 
 function response(body: unknown, status: number, origin: string) {
   return new Response(JSON.stringify(body), {
@@ -41,10 +43,17 @@ function validRequestId(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9_-]{8,128}$/.test(value);
 }
 
+function validModelName(value: string): boolean {
+  return value.length > 0 && value.length <= MAX_MODEL_NAME && /^[A-Za-z0-9._-]+$/.test(value);
+}
+
 function validatePayload(payload: unknown) {
   if (!payload || typeof payload !== "object") throw new Error("invalid payload");
   const body = payload as Record<string, unknown>;
   if (!validRequestId(body.requestId)) throw new Error("requestId is required");
+  if (body.operationType !== undefined && body.operationType !== OPERATION_TYPE) {
+    throw new Error("unsupported operation type");
+  }
   if (
     typeof body.sourceMediaId !== "string" ||
     !/^[A-Za-z0-9._-]{1,128}$/.test(body.sourceMediaId)
@@ -92,16 +101,46 @@ function validatePayload(payload: unknown) {
   ) {
     throw new Error("instructions are too long");
   }
+  if (!body.config || typeof body.config !== "object") throw new Error("config is required");
+  const config = body.config as Record<string, unknown>;
+  if (
+    typeof config.language !== "string" ||
+    !/^[A-Za-z]{2,8}(?:-[A-Za-z]{2,8})?$/.test(config.language)
+  ) {
+    throw new Error("language is invalid");
+  }
+  if (config.strictMode !== undefined && typeof config.strictMode !== "boolean") {
+    throw new Error("strictMode is invalid");
+  }
+  const maxTokens = config.maxTokens ?? 4096;
+  if (!isFiniteInteger(maxTokens) || maxTokens < 1 || maxTokens > 8192) {
+    throw new Error("maxTokens is invalid");
+  }
+  const temperature = config.temperature ?? 0.1;
+  if (typeof temperature !== "number" || !Number.isFinite(temperature) || temperature < 0 || temperature > 1) {
+    throw new Error("temperature is invalid");
+  }
   return {
     requestId: body.requestId as string,
     sourceMediaId: body.sourceMediaId as string,
     segments,
     instructions: typeof body.instructions === "string" ? body.instructions : "",
-    config: (body.config && typeof body.config === "object" ? body.config : {}) as Record<
-      string,
-      unknown
-    >,
+    config: {
+      language: config.language,
+      strictMode: config.strictMode ?? true,
+      maxTokens,
+      temperature,
+    },
   };
+}
+
+function parseProviderJson(text: unknown): unknown {
+  if (typeof text !== "string" || text.trim().length === 0) {
+    throw new Error("provider output text is missing");
+  }
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return JSON.parse((fenced?.[1] ?? trimmed).trim());
 }
 
 function validateActions(raw: unknown, input: ReturnType<typeof validatePayload>) {
@@ -220,6 +259,7 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) return response({ error: "service_unavailable" }, 503, origin);
     const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-1.5-flash";
+    if (!validModelName(model)) return response({ error: "service_unavailable" }, 503, origin);
     const transcript = payload.segments
       .map((segment) => `[${segment.startMs}-${segment.endMs}] ${segment.id}: ${segment.text}`)
       .join("\n");
@@ -242,7 +282,7 @@ Deno.serve(async (req) => {
               contents: [{ parts: [{ text: prompt }] }],
               generationConfig: {
                 temperature: 0.1,
-                maxOutputTokens: Math.min(Number(payload.config.maxTokens) || 4096, 8192),
+                maxOutputTokens: payload.config.maxTokens,
                 responseMimeType: "application/json",
                 responseSchema: {
                   type: "ARRAY",
@@ -298,11 +338,28 @@ Deno.serve(async (req) => {
         origin,
       );
     }
-    const providerBody = await providerResponse.json();
-    const text = providerBody.candidates?.[0]?.content?.parts?.[0]?.text;
+    let providerBody: Record<string, unknown>;
+    try {
+      providerBody = await providerResponse.json() as Record<string, unknown>;
+    } catch {
+      console.warn("Gemini returned a non-JSON response", { requestId });
+      return response({ error: "invalid_provider_output" }, 502, origin);
+    }
+    const candidates = Array.isArray(providerBody.candidates) ? providerBody.candidates : [];
+    const candidate = candidates[0];
+    const content = candidate && typeof candidate === "object"
+      ? (candidate as Record<string, unknown>).content
+      : undefined;
+    const parts = content && typeof content === "object"
+      ? (content as Record<string, unknown>).parts
+      : undefined;
+    const firstPart = Array.isArray(parts) ? parts[0] : undefined;
+    const text = firstPart && typeof firstPart === "object"
+      ? (firstPart as Record<string, unknown>).text
+      : undefined;
     let parsed: unknown;
     try {
-      parsed = JSON.parse(typeof text === "string" ? text : "[]");
+      parsed = parseProviderJson(text);
     } catch {
       console.warn("Gemini returned invalid JSON", { requestId });
       return response({ error: "invalid_provider_output" }, 502, origin);
@@ -314,10 +371,14 @@ Deno.serve(async (req) => {
       console.warn("Gemini output failed canonical validation", { requestId });
       return response({ error: "invalid_provider_output" }, 502, origin);
     }
+    const usageMetadata = providerBody.usageMetadata;
+    const usageTokens = usageMetadata && typeof usageMetadata === "object"
+      ? (usageMetadata as Record<string, unknown>).totalTokenCount
+      : null;
     const finalResponse = {
       actions,
       summary: "Semantic analysis completed",
-      usageTokens: providerBody.usageMetadata?.totalTokenCount ?? null,
+      usageTokens: isFiniteInteger(usageTokens) && usageTokens >= 0 ? usageTokens : null,
       provider: "gemini",
       model,
       promptVersion: SEMANTIC_PROMPT_VERSION,
@@ -352,7 +413,7 @@ Deno.serve(async (req) => {
     console.info("AI analysis completed", {
       requestId,
       userId: user.id,
-      operation: "semantic_edit_analysis",
+      operation: OPERATION_TYPE,
       latencyMs: Math.max(0, Date.now() - startedAt),
       provider: "gemini",
       model,
