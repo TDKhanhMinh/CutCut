@@ -15,3 +15,27 @@ Deno.test("semantic fixture evaluator detects exact canonical outputs", () => {
     { cases: 1, passed: 1, failed: 0, accuracy: 1, failures: [] },
   );
 });
+
+Deno.test("Vietnamese fixture corpus preserves bounded conservative taxonomy", async () => {
+  const fixtureUrl = new URL("./fixtures/semantic_eval_vi.json", import.meta.url);
+  const fixtures = JSON.parse(await Deno.readTextFile(fixtureUrl)) as SemanticFixtureCase[];
+  const evaluation = evaluateSemanticFixture(
+    fixtures,
+    fixtures.map((fixture) => fixture.expected),
+  );
+
+  assertEquals(evaluation, {
+    cases: 5,
+    passed: 5,
+    failed: 0,
+    accuracy: 1,
+    failures: [],
+  });
+  assertEquals(
+    fixtures.find((fixture) => fixture.description.startsWith("Intentional repetition"))?.expected,
+    [
+      { startMs: 40000, endMs: 42000, action: "KEEP", taxonomy: "none" },
+      { startMs: 42000, endMs: 44000, action: "KEEP", taxonomy: "none" },
+    ],
+  );
+});

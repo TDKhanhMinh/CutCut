@@ -20,41 +20,40 @@ impl Default for MockAIProvider {
 impl AIProvider for MockAIProvider {
     async fn analyze_transcript(
         &self,
-        _request: &AIAnalysisRequest,
+        request: &AIAnalysisRequest,
     ) -> Result<AIAnalysisResponse, AIProviderError> {
-        // Return a mock response
+        // Keep the mock on the same canonical contract as a real provider so
+        // the application service can be exercised without a network call.
+        let actions = request
+            .source_media_id
+            .as_ref()
+            .map(|source_media_id| {
+                request
+                    .segments
+                    .iter()
+                    .map(|segment| AIEditAction {
+                        id: format!("mock-{}", segment.id),
+                        source_media_id: source_media_id.clone(),
+                        start_ms: segment.start_ms,
+                        end_ms: segment.end_ms,
+                        action: "KEEP".into(),
+                        reason: "Deterministic mock suggestion".into(),
+                        confidence: 1.0,
+                        taxonomy: "none".into(),
+                        source: "ai".into(),
+                        segment_ids: vec![segment.id.clone()],
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         Ok(AIAnalysisResponse {
-            actions: vec![
-                AIEditAction {
-                    id: "mock-cut".into(),
-                    source_media_id: "mock-media".into(),
-                    start_ms: 0,
-                    end_ms: 1_500,
-                    action: "CUT".to_string(),
-                    reason: "Silence at the beginning".to_string(),
-                    confidence: 0.9,
-                    taxonomy: "redundant_sentence".into(),
-                    source: "ai".into(),
-                    segment_ids: vec![],
-                },
-                AIEditAction {
-                    id: "mock-keep".into(),
-                    source_media_id: "mock-media".into(),
-                    start_ms: 1_500,
-                    end_ms: 5_000,
-                    action: "KEEP".to_string(),
-                    reason: "Important dialogue".to_string(),
-                    confidence: 0.9,
-                    taxonomy: "none".into(),
-                    source: "ai".into(),
-                    segment_ids: vec![],
-                },
-            ],
-            summary: Some("Mock analysis completed successfully.".to_string()),
-            usage_tokens: Some(42),
+            actions,
+            summary: Some("Deterministic mock analysis completed.".into()),
+            usage_tokens: Some(0),
             provider: Some("mock".into()),
             model: Some("deterministic".into()),
-            prompt_version: Some("semantic-v1".into()),
+            prompt_version: Some("semantic-v2".into()),
         })
     }
 }

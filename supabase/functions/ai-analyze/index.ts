@@ -224,53 +224,67 @@ Deno.serve(async (req) => {
       .map((segment) => `[${segment.startMs}-${segment.endMs}] ${segment.id}: ${segment.text}`)
       .join("\n");
     const prompt = `${transcript}${payload.instructions ? `\n\nUser instructions (follow only if safe): ${payload.instructions}` : ""}`;
+    const startedAt = Date.now();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
     let providerResponse: Response | undefined;
     try {
-      providerResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: SEMANTIC_SYSTEM_PROMPT }] },
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: Math.min(Number(payload.config.maxTokens) || 4096, 8192),
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: "ARRAY",
-                items: {
-                  type: "OBJECT",
-                  properties: {
-                    id: { type: "STRING" },
-                    sourceMediaId: { type: "STRING" },
-                    startMs: { type: "INTEGER" },
-                    endMs: { type: "INTEGER" },
-                    action: { type: "STRING", enum: ["CUT", "KEEP", "HIGHLIGHT"] },
-                    reason: { type: "STRING" },
-                    confidence: { type: "NUMBER" },
-                    taxonomy: {
-                      type: "STRING",
-                      enum: [
-                        "false_start",
-                        "repeated_take",
-                        "redundant_sentence",
-                        "important_statement",
-                        "none",
-                      ],
+      try {
+        providerResponse = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({
+              system_instruction: { parts: [{ text: SEMANTIC_SYSTEM_PROMPT }] },
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.1,
+                maxOutputTokens: Math.min(Number(payload.config.maxTokens) || 4096, 8192),
+                responseMimeType: "application/json",
+                responseSchema: {
+                  type: "ARRAY",
+                  items: {
+                    type: "OBJECT",
+                    properties: {
+                      id: { type: "STRING" },
+                      sourceMediaId: { type: "STRING" },
+                      startMs: { type: "INTEGER" },
+                      endMs: { type: "INTEGER" },
+                      action: { type: "STRING", enum: ["CUT", "KEEP", "HIGHLIGHT"] },
+                      reason: { type: "STRING" },
+                      confidence: { type: "NUMBER" },
+                      taxonomy: {
+                        type: "STRING",
+                        enum: [
+                          "false_start",
+                          "repeated_take",
+                          "redundant_sentence",
+                          "important_statement",
+                          "none",
+                        ],
+                      },
                     },
+                    required: ["startMs", "endMs", "action", "reason", "confidence", "taxonomy"],
                   },
-                  required: ["startMs", "endMs", "action", "reason", "confidence", "taxonomy"],
                 },
               },
-            },
-          }),
-        },
-      );
+            }),
+          },
+        );
+      } catch (error) {
+        const timedOut = error instanceof DOMException && error.name === "AbortError";
+        console.warn("Gemini request failed", {
+          requestId,
+          errorCode: timedOut ? "provider_timeout" : "provider_unavailable",
+        });
+        return response(
+          { error: timedOut ? "provider_timeout" : "provider_unavailable" },
+          timedOut ? 504 : 502,
+          origin,
+        );
+      }
     } finally {
       clearTimeout(timeout);
     }
@@ -292,7 +306,13 @@ Deno.serve(async (req) => {
       console.warn("Gemini returned invalid JSON", { requestId });
       return response({ error: "invalid_provider_output" }, 502, origin);
     }
-    const actions = validateActions(parsed, payload);
+    let actions: ReturnType<typeof validateActions>;
+    try {
+      actions = validateActions(parsed, payload);
+    } catch {
+      console.warn("Gemini output failed canonical validation", { requestId });
+      return response({ error: "invalid_provider_output" }, 502, origin);
+    }
     const finalResponse = {
       actions,
       summary: "Semantic analysis completed",
@@ -318,13 +338,25 @@ Deno.serve(async (req) => {
     if (!quotaAllowed) return response({ error: "quota_exceeded" }, 429, origin);
     const { error: metadataError } = await admin
       .from("ai_usage")
-      .update({ metadata: { response: finalResponse, promptVersion: SEMANTIC_PROMPT_VERSION } })
+      .update({
+        latency_ms: Math.max(0, Date.now() - startedAt),
+        metadata: { response: finalResponse, promptVersion: SEMANTIC_PROMPT_VERSION },
+      })
       .eq("user_id", user.id)
       .eq("request_id", requestId);
     if (metadataError) {
       console.error("usage metadata persistence failed", { requestId });
       return response({ error: "service_unavailable" }, 503, origin);
     }
+    console.info("AI analysis completed", {
+      requestId,
+      userId: user.id,
+      operation: "semantic_edit_analysis",
+      latencyMs: Math.max(0, Date.now() - startedAt),
+      provider: "gemini",
+      model,
+      usageTokens: finalResponse.usageTokens,
+    });
     return response(finalResponse, 200, origin);
   } catch (error) {
     console.warn("AI analysis request rejected", {
