@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -25,6 +26,8 @@ impl JobChild {
 #[derive(Default, Clone)]
 pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, JobChild>>>,
+    cleanup_paths: Arc<Mutex<HashMap<String, Vec<PathBuf>>>>,
+    failure_cleanup_paths: Arc<Mutex<HashMap<String, Vec<PathBuf>>>>,
     cancelled: Arc<Mutex<HashSet<String>>>,
     cooperative: Arc<Mutex<HashSet<String>>>,
 }
@@ -33,6 +36,47 @@ impl JobManager {
     pub async fn add_job(&self, job_id: String, child: JobChild) {
         let mut jobs = self.jobs.lock().await;
         jobs.insert(job_id, child);
+    }
+
+    pub async fn register_cleanup_paths(&self, job_id: String, paths: Vec<PathBuf>) {
+        if paths.is_empty() {
+            return;
+        }
+        self.cleanup_paths.lock().await.insert(job_id, paths);
+    }
+
+    pub async fn register_failure_cleanup_paths(&self, job_id: String, paths: Vec<PathBuf>) {
+        if paths.is_empty() {
+            return;
+        }
+        self.failure_cleanup_paths
+            .lock()
+            .await
+            .insert(job_id, paths);
+    }
+
+    async fn cleanup_paths_for(&self, job_id: &str) {
+        let paths = self
+            .cleanup_paths
+            .lock()
+            .await
+            .remove(job_id)
+            .unwrap_or_default();
+        for path in paths {
+            let _ = tokio::fs::remove_file(path).await;
+        }
+    }
+
+    async fn cleanup_failure_paths_for(&self, job_id: &str) {
+        let paths = self
+            .failure_cleanup_paths
+            .lock()
+            .await
+            .remove(job_id)
+            .unwrap_or_default();
+        for path in paths {
+            let _ = tokio::fs::remove_file(path).await;
+        }
     }
 
     pub async fn register_cooperative(&self, job_id: String) {
@@ -57,9 +101,10 @@ impl JobManager {
         self.cancelled.lock().await.insert(job_id.to_string());
         let mut jobs = self.jobs.lock().await;
         if let Some(child) = jobs.remove(job_id) {
-            // Note: killing a child process might leave temp files.
-            // Further cleanup can be added here if needed.
             child.kill().await?;
+            drop(jobs);
+            self.cleanup_failure_paths_for(job_id).await;
+            self.cleanup_paths_for(job_id).await;
             Ok(())
         } else {
             drop(jobs);
@@ -102,6 +147,41 @@ pub async fn spawn_ffmpeg_job(
     args: Vec<String>,
     total_duration_us: Option<u64>,
 ) -> Result<(), MediaEngineError> {
+    spawn_ffmpeg_job_with_cleanup(app, job_id, args, total_duration_us, Vec::new()).await
+}
+
+/// Spawn FFmpeg and remove producer-owned temporary files on cancellation or
+/// process termination. User-selected export files are never passed here.
+pub async fn spawn_ffmpeg_job_with_cleanup(
+    app: AppHandle,
+    job_id: String,
+    args: Vec<String>,
+    total_duration_us: Option<u64>,
+    cleanup_paths: Vec<PathBuf>,
+) -> Result<(), MediaEngineError> {
+    spawn_ffmpeg_job_with_cleanup_policy(
+        app,
+        job_id,
+        args,
+        total_duration_us,
+        cleanup_paths,
+        Vec::new(),
+    )
+    .await
+}
+
+/// Spawn FFmpeg with separate cleanup policies. Always-cleanup files are
+/// removed for every terminal state (for example generated ASS files), while
+/// failure-cleanup files are preserved only after a successful render (for
+/// example a completed preview artifact).
+pub async fn spawn_ffmpeg_job_with_cleanup_policy(
+    app: AppHandle,
+    job_id: String,
+    args: Vec<String>,
+    total_duration_us: Option<u64>,
+    cleanup_paths: Vec<PathBuf>,
+    failure_cleanup_paths: Vec<PathBuf>,
+) -> Result<(), MediaEngineError> {
     // We expect the arguments to NOT include `-progress pipe:1`
     // We will append it here to ensure we get machine-readable progress.
     let mut final_args = args;
@@ -126,6 +206,12 @@ pub async fn spawn_ffmpeg_job(
     let job_manager = app.state::<JobManager>();
     job_manager
         .add_job(job_id.clone(), JobChild::Tauri(child))
+        .await;
+    job_manager
+        .register_cleanup_paths(job_id.clone(), cleanup_paths)
+        .await;
+    job_manager
+        .register_failure_cleanup_paths(job_id.clone(), failure_cleanup_paths)
         .await;
 
     // Emit started event
@@ -179,6 +265,10 @@ pub async fn spawn_ffmpeg_job(
                     let job_manager = app_clone.state::<JobManager>();
                     let was_cancelled = job_manager.take_cancelled(&job_id_clone).await;
                     job_manager.remove_job(&job_id_clone).await;
+                    if was_cancelled || payload.code != Some(0) {
+                        job_manager.cleanup_failure_paths_for(&job_id_clone).await;
+                    }
+                    job_manager.cleanup_paths_for(&job_id_clone).await;
 
                     if was_cancelled {
                         let _ = app_clone.emit(
@@ -234,6 +324,9 @@ pub async fn spawn_ffmpeg_job(
                 _ => {}
             }
         }
+        let job_manager = app_clone.state::<JobManager>();
+        job_manager.cleanup_failure_paths_for(&job_id_clone).await;
+        job_manager.cleanup_paths_for(&job_id_clone).await;
     });
 
     Ok(())

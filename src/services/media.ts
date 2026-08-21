@@ -14,6 +14,12 @@ export interface MediaJobEvent {
   result?: unknown;
 }
 
+export interface PreviewResponse {
+  jobId: string | null;
+  cachedPath: string | null;
+  artifact: import("@/types/artifact").ArtifactRecord | null;
+}
+
 export type MediaCompatibilitySeverity = "warning" | "blocking";
 
 export interface MediaCompatibilityWarning {
@@ -99,6 +105,14 @@ export const exportPrototypeVideo = (
   project: Project,
   outputPath: string,
 ) => invoke<string>("export_prototype_video", { project, outputPath });
+
+export const previewPrototypeVideo = (project: Project, startMs: number, endMs: number) =>
+  invoke<PreviewResponse>("preview_prototype_video", { project, startMs, endMs });
+
+export const finalizePreviewArtifact = (
+  project: Project,
+  artifact: import("@/types/artifact").ArtifactRecord,
+) => invoke<import("@/types/artifact").ArtifactRecord>("finalize_preview_artifact", { project, artifact });
 
 export const cancelMediaJob = (jobId: string) => invoke<void>("cancel_media_job", { jobId });
 

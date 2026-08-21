@@ -52,10 +52,9 @@ impl AIProvider for SupabaseAIProvider {
             if status == 401 || status == 403 {
                 return Err(AIProviderError::AuthError);
             }
-            let err_body = response.text().await.unwrap_or_default();
             return Err(AIProviderError::Provider(format!(
-                "HTTP {}: {}",
-                status, err_body
+                "upstream request failed (HTTP {})",
+                status.as_u16()
             )));
         }
 
@@ -63,6 +62,7 @@ impl AIProvider for SupabaseAIProvider {
             AIProviderError::InvalidOutput(format!("Failed to parse Supabase JSON response: {}", e))
         })?;
 
+        body.validate_against(request)?;
         Ok(body)
     }
 }

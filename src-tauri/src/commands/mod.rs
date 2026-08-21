@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod cache;
 pub mod caption;
 pub mod diagnostics;

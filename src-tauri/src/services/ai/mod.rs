@@ -1,4 +1,5 @@
 pub mod mock;
+pub mod service;
 pub mod supabase;
 
 use crate::models::ai::{AIAnalysisRequest, AIAnalysisResponse, AIProviderError};

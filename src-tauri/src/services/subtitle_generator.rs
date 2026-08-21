@@ -14,19 +14,7 @@ pub struct SubtitleGenerator;
 impl SubtitleGenerator {
     /// Maps source-time cues to output-time cues by skipping over enabled cuts.
     pub fn map_to_output_timeline(cues: &[CaptionCue], edit_plan: &EditPlan) -> Vec<OutputCue> {
-        // 1. Extract and sort enabled cuts
-        let mut cuts: Vec<(u64, u64)> = edit_plan
-            .actions
-            .iter()
-            .filter_map(|a| {
-                (a.enabled && a.action_type == EditActionType::Cut)
-                    .then_some((a.start_ms, a.end_ms))
-            })
-            .collect();
-
-        // Note: The EditPlan validator should have already sorted and merged these,
-        // but we sort again just in case to guarantee correctness.
-        cuts.sort_by_key(|c| c.0);
+        let cuts = Self::normalized_cuts(edit_plan);
 
         let mut output_cues = Vec::new();
 
@@ -82,6 +70,33 @@ impl SubtitleGenerator {
         output_cues
     }
 
+    fn normalized_cuts(edit_plan: &EditPlan) -> Vec<(u64, u64)> {
+        // Treat all overlapping/adjacent cuts as one interval. AI and manual
+        // suggestions can describe the same source range with different
+        // reasons; counting each row independently would shift timestamps
+        // twice and desynchronise captions from the exported video.
+        let mut raw_cuts: Vec<(u64, u64)> = edit_plan
+            .actions
+            .iter()
+            .filter_map(|a| {
+                (a.enabled && a.action_type == EditActionType::Cut && a.start_ms < a.end_ms)
+                    .then_some((a.start_ms, a.end_ms))
+            })
+            .collect();
+        raw_cuts.sort_by_key(|cut| cut.0);
+        let mut cuts = Vec::with_capacity(raw_cuts.len());
+        for (start, end) in raw_cuts {
+            if let Some((_, previous_end)) = cuts.last_mut() {
+                if start <= *previous_end {
+                    *previous_end = (*previous_end).max(end);
+                    continue;
+                }
+            }
+            cuts.push((start, end));
+        }
+        cuts
+    }
+
     /// Converts a source timestamp to output timestamp by subtracting the total duration
     /// of all cuts that occurred strictly before it.
     fn source_to_output_ms(source_ms: u64, sorted_cuts: &[(u64, u64)]) -> u64 {
@@ -112,7 +127,7 @@ impl SubtitleGenerator {
     /// Convert #RRGGBB to ASS color &HAABBGGRR
     fn hex_to_ass_color(hex: &str, alpha_hex: &str) -> String {
         let clean = hex.trim_start_matches('#');
-        if clean.len() >= 6 {
+        if clean.len() == 6 && clean.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             let r = &clean[0..2];
             let g = &clean[2..4];
             let b = &clean[4..6];
@@ -134,6 +149,41 @@ impl SubtitleGenerator {
         }
     }
 
+    fn sanitize_font_family(font: &str) -> String {
+        let sanitized: String = font
+            .chars()
+            .filter(|character| {
+                character.is_ascii_alphanumeric()
+                    || *character == ' '
+                    || *character == '-'
+                    || *character == '_'
+            })
+            .take(80)
+            .collect();
+        if sanitized.trim().is_empty() {
+            "Arial".to_string()
+        } else {
+            sanitized.trim().to_string()
+        }
+    }
+
+    fn escape_ass_text(text: &str) -> String {
+        // ASS uses braces/backslashes as override syntax. Strip those control
+        // characters rather than allowing caption text to inject tags.
+        text.chars()
+            .filter(|character| !character.is_control() || *character == '\n' || *character == '\r')
+            .map(|character| match character {
+                '\\' => '／',
+                '{' => '（',
+                '}' => '）',
+                '\r' => ' ',
+                '\n' => '\n',
+                other => other,
+            })
+            .collect::<String>()
+            .replace('\n', "\\N")
+    }
+
     /// Generate ASS file content
     pub fn generate_ass_content(
         cues: &[CaptionCue],
@@ -143,9 +193,63 @@ impl SubtitleGenerator {
         video_height: u32,
     ) -> String {
         let output_cues = Self::map_to_output_timeline(cues, edit_plan);
+        Self::generate_ass_content_from_output_cues(
+            output_cues,
+            style,
+            video_width,
+            video_height,
+            0,
+        )
+    }
 
+    /// Generates a preview subtitle track clipped to a source range. The
+    /// offset is calculated on the edited output timeline, so captions remain
+    /// aligned even when cuts occur before the requested preview range.
+    pub fn generate_ass_content_for_range(
+        cues: &[CaptionCue],
+        style: &CaptionStyle,
+        edit_plan: &EditPlan,
+        video_width: u32,
+        video_height: u32,
+        source_start_ms: u64,
+        source_end_ms: u64,
+    ) -> String {
+        let cuts = Self::normalized_cuts(edit_plan);
+        let offset = Self::source_to_output_ms(source_start_ms, &cuts);
+        let end = Self::source_to_output_ms(source_end_ms, &cuts);
+        let output_cues = Self::map_to_output_timeline(cues, edit_plan)
+            .into_iter()
+            .filter_map(|mut cue| {
+                let start = cue.start_ms.max(offset);
+                let finish = cue.end_ms.min(end);
+                if start >= finish {
+                    return None;
+                }
+                cue.start_ms = start.saturating_sub(offset);
+                cue.end_ms = finish.saturating_sub(offset);
+                Some(cue)
+            })
+            .collect();
+        Self::generate_ass_content_from_output_cues(
+            output_cues,
+            style,
+            video_width,
+            video_height,
+            offset,
+        )
+    }
+
+    fn generate_ass_content_from_output_cues(
+        output_cues: Vec<OutputCue>,
+        style: &CaptionStyle,
+        video_width: u32,
+        video_height: u32,
+        _output_offset_ms: u64,
+    ) -> String {
         // Map styles
-        let font_size = (style.font_size_vh * video_height as f64).round() as u32;
+        let font_size = (style.font_size_vh.clamp(0.005, 0.25) * video_height as f64)
+            .round()
+            .max(1.0) as u32;
         let primary_color = Self::hex_to_ass_color(&style.primary_color, "00"); // Solid
 
         let outline_color = if let Some(ref c) = style.outline_color {
@@ -155,7 +259,7 @@ impl SubtitleGenerator {
         };
 
         let outline_width = if let Some(w) = style.outline_width_vh {
-            (w * video_height as f64).round() as u32
+            (w.clamp(0.0, 0.05) * video_height as f64).round() as u32
         } else {
             0
         };
@@ -176,7 +280,8 @@ impl SubtitleGenerator {
         }; // 1=Outline, 3=Opaque box
 
         // Convert positions from Top-Left origin (Project schema) to Bottom-Up MarginV (ASS schema)
-        let margin_v = ((1.0 - style.position_y_vh) * video_height as f64).round() as u32;
+        let margin_v =
+            ((1.0 - style.position_y_vh.clamp(0.0, 1.0)) * video_height as f64).round() as u32;
 
         let alignment = Self::map_alignment(style);
 
@@ -199,7 +304,7 @@ impl SubtitleGenerator {
 
         lines.push(format!(
             "Style: Default,{},{},{},&H000000FF,{},{},{},{},0,0,100,100,0,0,{},{},0,{},10,10,{},1",
-            style.font_family,
+            Self::sanitize_font_family(&style.font_family),
             font_size,
             primary_color,
             outline_color,
@@ -221,14 +326,16 @@ impl SubtitleGenerator {
         );
 
         for cue in output_cues {
-            // Replace \n with ASS newline \N
-            let safe_text = cue.text.replace("\n", "\\N");
+            let safe_text = Self::escape_ass_text(&cue.text);
+            let x = (style.position_x_vw.clamp(0.0, 1.0) * video_width as f64).round() as u32;
+            let y = (style.position_y_vh.clamp(0.0, 1.0) * video_height as f64).round() as u32;
+            let positioned_text = format!("{{\\pos({x},{y})}}{safe_text}");
 
             lines.push(format!(
                 "Dialogue: 0,{},{},Default,,0,0,0,,{}",
                 Self::format_ass_time(cue.start_ms),
                 Self::format_ass_time(cue.end_ms),
-                safe_text
+                positioned_text
             ));
         }
 
@@ -237,7 +344,9 @@ impl SubtitleGenerator {
 
     /// Writes the generated ASS content to a temp file and returns its path
     pub fn write_temp_ass_file(content: &str) -> Result<PathBuf, String> {
-        let temp_dir = std::env::temp_dir();
+        let temp_dir = std::env::temp_dir().join("cutcut_subtitles");
+        std::fs::create_dir_all(&temp_dir)
+            .map_err(|e| format!("Failed to create temp subtitle directory: {e}"))?;
         let file_name = format!("cutcut_subs_{}.ass", uuid::Uuid::new_v4());
         let file_path = temp_dir.join(file_name);
 
@@ -345,6 +454,20 @@ mod tests {
     }
 
     #[test]
+    fn overlapping_cuts_are_merged_before_timeline_shift() {
+        let cues = vec![make_cue(0, 10_000)];
+        let plan = EditPlan {
+            schema_version: 1,
+            actions: vec![make_cut(2_000, 5_000), make_cut(4_000, 7_000)],
+        };
+
+        let out = SubtitleGenerator::map_to_output_timeline(&cues, &plan);
+        assert_eq!(out.len(), 2);
+        assert_eq!((out[0].start_ms, out[0].end_ms), (0, 2_000));
+        assert_eq!((out[1].start_ms, out[1].end_ms), (2_000, 5_000));
+    }
+
+    #[test]
     fn test_hex_to_ass_color() {
         assert_eq!(
             SubtitleGenerator::hex_to_ass_color("#FF0000", "00"),
@@ -354,6 +477,10 @@ mod tests {
             SubtitleGenerator::hex_to_ass_color("#00FF00", "00"),
             "&H0000FF00"
         );
+        assert_eq!(
+            SubtitleGenerator::hex_to_ass_color("not-a-color", "00"),
+            "&H00FFFFFF"
+        );
     }
 
     #[test]
@@ -361,5 +488,37 @@ mod tests {
         assert_eq!(SubtitleGenerator::format_ass_time(1000), "0:00:01.00");
         assert_eq!(SubtitleGenerator::format_ass_time(3600000), "1:00:00.00");
         assert_eq!(SubtitleGenerator::format_ass_time(12345), "0:00:12.34");
+    }
+
+    #[test]
+    fn ass_text_and_font_are_sanitized() {
+        let style = CaptionStyle {
+            preset_id: "test".into(),
+            font_family: "Arial,{\\evil}".into(),
+            font_weight: 400,
+            font_style: "normal".into(),
+            font_size_vh: 0.04,
+            position_x_vw: 0.5,
+            position_y_vh: 0.8,
+            alignment: "center".into(),
+            primary_color: "#ffffff".into(),
+            outline_color: None,
+            outline_width_vh: None,
+            background_color: None,
+            background_opacity: None,
+        };
+        let cue = CaptionCue {
+            text: "hello {\\tag}\nworld".into(),
+            ..make_cue(0, 1000)
+        };
+        let content = SubtitleGenerator::generate_ass_content(
+            &[cue],
+            &style,
+            &EditPlan::default(),
+            1280,
+            720,
+        );
+        assert!(!content.contains("{\\tag}"));
+        assert!(content.contains("hello （／tag）\\Nworld"));
     }
 }

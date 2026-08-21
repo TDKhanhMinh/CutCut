@@ -1,4 +1,4 @@
-use sha2::{Digest, Sha256};
+use serde_json::json;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
@@ -68,8 +68,8 @@ pub async fn export_prototype_video(
     let media = project.media.first().ok_or("No media in project")?;
     let (input_path, output_path) = validate_export_paths(&media.path, &output_path)?;
     let duration_us = positive_duration_us(media.metadata.duration_sec)?;
-    let args = build_render_args(&project, input_path, output_path, None, None)?;
-    spawn_render_job(app, args, duration_us).await
+    let prepared = build_render_args(&project, input_path, output_path, None, None)?;
+    spawn_render_job(app, prepared, duration_us).await
 }
 
 #[tauri::command]
@@ -82,6 +82,10 @@ pub async fn preview_prototype_video(
     if start_ms >= end_ms {
         return Err("Preview range must have end_ms > start_ms".into());
     }
+    let requested_duration_ms = end_ms - start_ms;
+    if !(3_000..=5_000).contains(&requested_duration_ms) {
+        return Err("Accurate Preview range must be between 3 and 5 seconds".into());
+    }
     let project = validated_project(project)?;
     let media = project.media.first().ok_or("No media in project")?;
     let duration_ms = positive_duration_us(media.metadata.duration_sec)? / 1_000;
@@ -89,36 +93,82 @@ pub async fn preview_prototype_video(
         return Err("Preview range exceeds media duration".into());
     }
     let input_path = path_to_string(&canonical_existing_path(&media.path, "Input")?)?;
-    let signature = generate_preview_signature(&project, start_ms, end_ms);
-    let cache_dir = std::env::temp_dir().join("cutcut_preview_cache");
+    let (signature, source_fingerprint) =
+        generate_preview_signature(&project, &input_path, start_ms, end_ms)?;
+    let cache_root = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    let cache_dir = cache_root.join("cutcut_preview_cache");
     std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
     let output_path = cache_dir.join(format!("preview_{signature}.mp4"));
     let output_path_str = path_to_string(&output_path)?;
-    if output_path.exists() {
+    let relative_path = Path::new("cutcut_preview_cache").join(format!("preview_{signature}.mp4"));
+    let mut project_for_registry = project.clone();
+    if let Some(record) = crate::services::artifact_registry::ArtifactRegistryService::resolve(
+        &mut project_for_registry,
+        &signature,
+        &cache_root,
+    ) {
         return Ok(PreviewResponse {
             job_id: None,
             cached_path: Some(output_path_str),
+            artifact: Some(record),
         });
     }
     let duration_ms = end_ms - start_ms;
-    let args = build_render_args(
+    let prepared = build_render_args(
         &project,
         input_path,
-        output_path_str,
+        output_path_str.clone(),
         Some(start_ms),
         Some(duration_ms),
     )?;
-    let job_id = spawn_render_job(app, args, duration_ms.saturating_mul(1_000)).await?;
+    let job_id = spawn_render_job(app, prepared, duration_ms.saturating_mul(1_000)).await?;
     Ok(PreviewResponse {
         job_id: Some(job_id),
-        cached_path: None,
+        // The deterministic target path is returned before the job finishes;
+        // it is safe for the UI to attach only after a Completed event.
+        cached_path: Some(output_path_str),
+        artifact: Some(crate::models::artifact_registry::ArtifactRecord {
+            id: format!("preview-{signature}"),
+            artifact_type: crate::models::artifact::ArtifactType::Preview,
+            signature,
+            relative_path: relative_path.to_string_lossy().replace('\\', "/"),
+            created_at: now_ms(),
+            artifact_version: 2,
+            producer: "ffmpeg-accurate-preview".into(),
+            status: crate::models::artifact_registry::ArtifactStatus::Building,
+            dependencies: vec![source_fingerprint],
+            integrity: None,
+            diagnostic_reason: None,
+        }),
     })
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PreviewResponse {
     pub job_id: Option<String>,
     pub cached_path: Option<String>,
+    pub artifact: Option<crate::models::artifact_registry::ArtifactRecord>,
+}
+
+#[tauri::command]
+pub fn finalize_preview_artifact(
+    app: AppHandle,
+    mut project: crate::models::project::Project,
+    artifact: crate::models::artifact_registry::ArtifactRecord,
+) -> Result<crate::models::artifact_registry::ArtifactRecord, String> {
+    let cache_root = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    crate::services::artifact_registry::ArtifactRegistryService::register_completed(
+        &mut project,
+        artifact.clone(),
+        cache_root,
+    )
+    .map_err(|e| e.to_string())?;
+    project
+        .artifacts
+        .into_iter()
+        .find(|record| record.id == artifact.id)
+        .ok_or_else(|| "Preview artifact was not registered".to_string())
 }
 
 fn validated_project(
@@ -132,13 +182,29 @@ fn validated_project(
     Ok(project)
 }
 
+struct PreparedRender {
+    args: Vec<String>,
+    cleanup_paths: Vec<PathBuf>,
+    failure_cleanup_paths: Vec<PathBuf>,
+}
+
+fn render_dimensions(settings: &crate::models::project::OutputSettings) -> (u32, u32) {
+    let resolution = settings.target_resolution.clamp(240, 8_192);
+    let (width, height) = match settings.aspect_ratio.as_str() {
+        "9:16" => ((resolution as f64 * 9.0 / 16.0).round() as u32, resolution),
+        "1:1" => (resolution, resolution),
+        _ => ((resolution as f64 * 16.0 / 9.0).round() as u32, resolution),
+    };
+    (width.max(2) & !1, height.max(2) & !1)
+}
+
 fn build_render_args(
     project: &crate::models::project::Project,
     input_path: String,
     output_path: String,
     seek_start_ms: Option<u64>,
     seek_duration_ms: Option<u64>,
-) -> Result<Vec<String>, String> {
+) -> Result<PreparedRender, String> {
     let mut cut_exprs = Vec::new();
     for action in &project.edit_plan.actions {
         if action.enabled && action.action_type == EditActionType::Cut {
@@ -149,8 +215,10 @@ fn build_render_args(
             ));
         }
     }
-    let mut vf_filters = vec!["scale=-2:720".to_string()];
+    let (video_width, video_height) = render_dimensions(&project.settings);
+    let mut vf_filters = vec![format!("scale={video_width}:{video_height}")];
     let mut af_filters = Vec::new();
+    let mut cleanup_paths = Vec::new();
     if !cut_exprs.is_empty() {
         let select_expr = format!("not({})", cut_exprs.join("+"));
         vf_filters.extend([
@@ -161,27 +229,46 @@ fn build_render_args(
     }
     if let Some(style) = &project.captions {
         if !project.caption_cues.is_empty() {
-            let ass = crate::services::subtitle_generator::SubtitleGenerator::generate_ass_content(
-                &project.caption_cues,
-                style,
-                &project.edit_plan,
-                1280,
-                720,
-            );
+            let ass = match (seek_start_ms, seek_duration_ms) {
+                (Some(start_ms), Some(duration_ms)) => crate::services::subtitle_generator::SubtitleGenerator::generate_ass_content_for_range(
+                    &project.caption_cues,
+                    style,
+                    &project.edit_plan,
+                    video_width,
+                    video_height,
+                    start_ms,
+                    start_ms.saturating_add(duration_ms),
+                ),
+                _ => crate::services::subtitle_generator::SubtitleGenerator::generate_ass_content(
+                    &project.caption_cues,
+                    style,
+                    &project.edit_plan,
+                    video_width,
+                    video_height,
+                ),
+            };
             let ass_path =
                 crate::services::subtitle_generator::SubtitleGenerator::write_temp_ass_file(&ass)?;
             let mut path = path_to_string(&ass_path)?.replace('\\', "/");
             if let Some(position) = path.find(':') {
                 path.insert(position, '\\');
             }
+            path = path.replace('\'', "\\'");
             vf_filters.push(format!("ass='{path}'"));
+            cleanup_paths.push(ass_path);
         }
     }
+    let failure_cleanup_paths = seek_duration_ms
+        .is_some()
+        .then(|| PathBuf::from(&output_path))
+        .into_iter()
+        .collect();
     let mut args = vec!["-y".into()];
+    args.extend(["-i".into(), input_path]);
+    // Place seek after input for frame-accurate preview. Export has no seek.
     if let Some(start_ms) = seek_start_ms {
         args.extend(["-ss".into(), format!("{:.3}", start_ms as f64 / 1000.0)]);
     }
-    args.extend(["-i".into(), input_path]);
     if !vf_filters.is_empty() {
         args.extend(["-vf".into(), vf_filters.join(",")]);
     }
@@ -208,42 +295,66 @@ fn build_render_args(
         },
         "-c:a".into(),
         "aac".into(),
-        "-progress".into(),
-        "pipe:1".into(),
         output_path,
     ]);
-    Ok(args)
+    Ok(PreparedRender {
+        args,
+        cleanup_paths,
+        failure_cleanup_paths,
+    })
 }
 
 async fn spawn_render_job(
     app: AppHandle,
-    args: Vec<String>,
+    prepared: PreparedRender,
     duration_us: u64,
 ) -> Result<String, String> {
     let job_id = uuid::Uuid::new_v4().to_string();
-    crate::services::media_job::spawn_ffmpeg_job(app, job_id.clone(), args, Some(duration_us))
-        .await
-        .map_err(|e| e.to_string())?;
+    crate::services::media_job::spawn_ffmpeg_job_with_cleanup_policy(
+        app,
+        job_id.clone(),
+        prepared.args,
+        Some(duration_us),
+        prepared.cleanup_paths,
+        prepared.failure_cleanup_paths,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(job_id)
 }
 
 fn generate_preview_signature(
     project: &crate::models::project::Project,
+    input_path: &str,
     start_ms: u64,
     end_ms: u64,
-) -> String {
-    let mut hasher = Sha256::new();
-    for value in [
-        serde_json::to_string(&project.edit_plan).unwrap_or_default(),
-        serde_json::to_string(&project.captions).unwrap_or_default(),
-        serde_json::to_string(&project.caption_cues).unwrap_or_default(),
-        serde_json::to_string(&project.settings).unwrap_or_default(),
-    ] {
-        hasher.update(value.as_bytes());
-    }
-    hasher.update(start_ms.to_be_bytes());
-    hasher.update(end_ms.to_be_bytes());
-    hex::encode(hasher.finalize())
+) -> Result<(String, String), String> {
+    let source_fingerprint = crate::models::artifact::get_content_fingerprint(input_path)
+        .map_err(|e| format!("Unable to fingerprint preview source: {e}"))?;
+    let descriptor = crate::models::artifact::ArtifactSignature::new(
+        crate::models::artifact::ArtifactType::Preview,
+        2,
+        vec![source_fingerprint.clone()],
+        json!({
+            "plannerVersion": 2,
+            "captionRendererVersion": 2,
+            "rangeStartMs": start_ms,
+            "rangeEndMs": end_ms,
+            "editPlan": project.edit_plan,
+            "captions": project.captions,
+            "captionCues": project.caption_cues,
+            "settings": project.settings,
+            "mediaMetadata": project.media.first().map(|media| &media.metadata),
+        }),
+    );
+    Ok((descriptor.signature, source_fingerprint))
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 fn positive_duration_us(duration_sec: f64) -> Result<u64, String> {
@@ -341,7 +452,10 @@ fn path_to_string(path: &Path) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_export_paths;
+    use super::{generate_preview_signature, validate_export_paths};
+    use crate::models::media_info::MediaSourceMetadata;
+    use crate::models::project::MediaSource;
+    use crate::models::project::Project;
     use std::fs;
     #[test]
     fn rejects_export_that_would_overwrite_the_source() {
@@ -351,5 +465,36 @@ mod tests {
         let error =
             validate_export_paths(source.to_str().unwrap(), source.to_str().unwrap()).unwrap_err();
         assert!(error.contains("different from the source"));
+    }
+
+    #[test]
+    fn preview_signature_changes_for_range_or_source_content() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("source.mp4");
+        fs::write(&source, b"source-a").unwrap();
+        let mut project = Project::default();
+        project.media.push(MediaSource {
+            id: "media-1".into(),
+            path: source.to_string_lossy().into_owned(),
+            metadata: MediaSourceMetadata {
+                path: source.to_string_lossy().into_owned(),
+                duration_sec: 10.0,
+                fps: 30.0,
+                width: 1920,
+                height: 1080,
+                video_codec: "h264".into(),
+                audio_codec: Some("aac".into()),
+                rotation: 0,
+            },
+        });
+        let first =
+            generate_preview_signature(&project, source.to_str().unwrap(), 0, 3_000).unwrap();
+        let second =
+            generate_preview_signature(&project, source.to_str().unwrap(), 1_000, 4_000).unwrap();
+        assert_ne!(first.0, second.0);
+        fs::write(&source, b"source-b").unwrap();
+        let third =
+            generate_preview_signature(&project, source.to_str().unwrap(), 0, 3_000).unwrap();
+        assert_ne!(first.0, third.0);
     }
 }

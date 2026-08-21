@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod artifact_registry;
 pub mod audio_extraction_service;
+pub mod auth_session;
 pub mod cache_cleanup;
 pub mod caption_segmenter;
 pub mod edit_validator;

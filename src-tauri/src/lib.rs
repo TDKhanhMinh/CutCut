@@ -13,6 +13,7 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .manage(services::media_job::JobManager::default())
+        .manage(services::auth_session::AuthSessionStore::default())
         .manage(services::resource_manager::ResourceJobManager::default())
         .manage(services::hardware_detection::RuntimeProfileCache::default())
         .manage(services::project_repository::ProjectSaveCoordinator::default())
@@ -31,6 +32,10 @@ pub fn run() {
             commands::media::read_media_metadata,
             commands::media::export_prototype_video,
             commands::media::preview_prototype_video,
+            commands::media::finalize_preview_artifact,
+            commands::auth::set_auth_session,
+            commands::auth::get_auth_session,
+            commands::auth::clear_auth_session,
             commands::project::create_project,
             commands::project::validate_edit_plan,
             commands::project::save_project_to_disk,
