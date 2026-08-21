@@ -24,7 +24,7 @@ The version-controlled matrix is `qa/fixtures/fixture-matrix.json`.
 ## Automated checks
 
 - `npm run test:e2e -- --workers=1` runs the browser smoke suite and invokes the
-  local fixture/output validator. The current suite has 12 tests, including
+  local fixture/output validator. The current suite has 13 tests, including
   1280/1440/1920 desktop overflow/theme checks and EN/VI persistence checks.
 - `node scripts/validation/task46-localization.mjs` verifies that EN and VI
   resources have identical keys and that migrated editor strings are not
