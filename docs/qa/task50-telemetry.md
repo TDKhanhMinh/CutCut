@@ -15,8 +15,11 @@ Validation:
 
 ```text
 pwsh -NoProfile -File scripts/validation/task50-telemetry.ps1
-npx playwright test --workers=1
+npx playwright test --workers=1 -g "telemetry"
 ```
+
+The browser lifecycle test confirms that a missing preference keeps the queue
+empty, opt-in queues an allowlisted event, and opt-out clears the queue.
 
 Production sign-off still requires a clean Windows run with telemetry disabled
 and enabled, a captured sample payload, and offline failure verification.

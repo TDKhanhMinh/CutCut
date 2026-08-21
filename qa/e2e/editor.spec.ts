@@ -158,6 +158,34 @@ test('telemetry allowlist redacts paths, JWTs and API keys', async () => {
   expect(String(redacted.errorCode)).not.toContain('C:\\Users\\alice');
 });
 
+test('telemetry is opt-in and opt-out clears the local queue', async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.clear());
+  await page.goto('/#/');
+  const lifecycle = await page.evaluate(async () => {
+    const module = await import('/src/services/telemetry.ts');
+    const service = module.telemetry;
+    const disabledByDefault = service.isEnabled();
+    service.track('startup');
+    const queueBeforeOptIn = service.getQueuedEvents().length;
+    service.setEnabled(true);
+    service.track('export_started');
+    const queueAfterOptIn = service.getQueuedEvents().length;
+    service.setEnabled(false);
+    return {
+      disabledByDefault,
+      queueBeforeOptIn,
+      queueAfterOptIn,
+      queueAfterOptOut: service.getQueuedEvents().length,
+    };
+  });
+  expect(lifecycle).toEqual({
+    disabledByDefault: false,
+    queueBeforeOptIn: 0,
+    queueAfterOptIn: 1,
+    queueAfterOptOut: 0,
+  });
+});
+
 test('cut preview skips merged enabled ranges without mutating source playback state', () => {
   const plan = {
     actions: [
