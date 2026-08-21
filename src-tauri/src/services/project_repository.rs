@@ -148,6 +148,7 @@ fn backup_path(path: &Path) -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{backup_path, load_project, persist_transcript, save_project, RepositoryError};
+    use crate::models::edit_plan::{EditAction, EditActionSource, EditActionType};
     use crate::models::project::{
         CaptionCue, CaptionStyle, Project, Transcript, TranscriptSegment,
     };
@@ -165,6 +166,34 @@ mod tests {
 
         assert_eq!(reopened.id, project.id);
         assert_eq!(reopened.schema_version, project.schema_version);
+    }
+
+    #[test]
+    fn edit_plan_decision_round_trips_through_project_save() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("project.cutcut");
+        let mut project = Project::default();
+        project.edit_plan.actions.push(EditAction {
+            id: "silence-1".into(),
+            action_type: EditActionType::Cut,
+            source_media_id: "media-1".into(),
+            start_ms: 1_000,
+            end_ms: 2_000,
+            source: EditActionSource::Local,
+            reason: "silence".into(),
+            confidence: Some(0.9),
+            enabled: false,
+            created_at: 1,
+            updated_at: 2,
+            payload: None,
+        });
+
+        save_project(&path, &project).unwrap();
+        let reopened = load_project(&path).unwrap();
+
+        assert_eq!(reopened.edit_plan.actions[0].id, "silence-1");
+        assert!(!reopened.edit_plan.actions[0].enabled);
+        assert_eq!(reopened.edit_plan.actions[0].updated_at, 2);
     }
 
     #[test]
