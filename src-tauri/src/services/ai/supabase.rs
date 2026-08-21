@@ -1,8 +1,8 @@
+use super::AIProvider;
+use crate::models::ai::{AIAnalysisRequest, AIAnalysisResponse, AIProviderError};
 use async_trait::async_trait;
 use reqwest::Client;
 use std::time::Duration;
-use crate::models::ai::{AIAnalysisRequest, AIAnalysisResponse, AIProviderError};
-use super::AIProvider;
 
 pub struct SupabaseAIProvider {
     client: Client,
@@ -29,7 +29,9 @@ impl AIProvider for SupabaseAIProvider {
         &self,
         request: &AIAnalysisRequest,
     ) -> Result<AIAnalysisResponse, AIProviderError> {
-        let response = self.client.post(&self.function_url)
+        let response = self
+            .client
+            .post(&self.function_url)
             .header("Authorization", format!("Bearer {}", self.jwt_token))
             .json(request)
             .send()
@@ -50,14 +52,17 @@ impl AIProvider for SupabaseAIProvider {
             if status == 401 || status == 403 {
                 return Err(AIProviderError::AuthError);
             }
-            let err_body = response.text().await.unwrap_or_default();
-            return Err(AIProviderError::Provider(format!("HTTP {}: {}", status, err_body)));
+            return Err(AIProviderError::Provider(format!(
+                "upstream request failed (HTTP {})",
+                status.as_u16()
+            )));
         }
 
         let body: AIAnalysisResponse = response.json().await.map_err(|e| {
             AIProviderError::InvalidOutput(format!("Failed to parse Supabase JSON response: {}", e))
         })?;
 
+        body.validate_against(request)?;
         Ok(body)
     }
 }

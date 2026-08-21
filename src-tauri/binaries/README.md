@@ -6,6 +6,13 @@
 - Variant: win64-gpl (static build)
 - Target: x86_64-pc-windows-msvc
 
+## Whisper runtime
+- Binary: `whisper-x86_64-pc-windows-msvc.exe`
+- Baseline: CPU-first `whisper-bin-x64 v1.9.2` (prebuilt whisper.cpp CLI)
+- Runtime DLLs: `binaries/whisper/*.dll`, mapped to the bundle resource root so
+  Windows DLL lookup works without modifying the user's global `PATH`.
+- GPU/CUDA is not required; the packaged baseline is CPU-safe.
+
 ## Naming Convention (Tauri Sidecar)
 Binaries must follow the pattern `<name>-<target-triple>.exe`:
 - `ffmpeg-x86_64-pc-windows-msvc.exe`

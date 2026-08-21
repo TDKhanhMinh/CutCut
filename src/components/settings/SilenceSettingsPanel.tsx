@@ -2,17 +2,17 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { VolumeX, Loader2, CheckCircle2, PlayCircle } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Label } from "../ui/label";
-import { SilencePreset, SilenceConfig, SilenceSettings, SilenceInterval } from "@/types/silence";
+import {
+  SilencePreset,
+  SilenceConfig,
+  SilenceSettings,
+  SilenceDetectionResult,
+} from "@/types/silence";
+import type { MediaJobEvent } from "@/services/media";
 
 interface SilenceSettingsPanelProps {
   isOpen: boolean;
@@ -23,9 +23,9 @@ interface SilenceSettingsPanelProps {
 }
 
 const PRESET_MAPPING: Record<Exclude<SilencePreset, "custom">, SilenceSettings> = {
-  conservative: { thresholdDb: -40, minDurationMs: 1500 },
-  balanced: { thresholdDb: -35, minDurationMs: 750 },
-  aggressive: { thresholdDb: -30, minDurationMs: 400 },
+  conservative: { thresholdDb: -40, minDurationMs: 1500, paddingMs: 0 },
+  balanced: { thresholdDb: -35, minDurationMs: 750, paddingMs: 0 },
+  aggressive: { thresholdDb: -30, minDurationMs: 400, paddingMs: 0 },
 };
 
 export function SilenceSettingsPanel({
@@ -37,7 +37,9 @@ export function SilenceSettingsPanel({
 }: SilenceSettingsPanelProps) {
   const [localConfig, setLocalConfig] = useState<SilenceConfig>(config);
   const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ count: number; totalDurationMs: number } | null>(null);
+  const [testResult, setTestResult] = useState<{ count: number; totalDurationMs: number } | null>(
+    null,
+  );
 
   // Sync prop to local state when opening
   if (isOpen && localConfig !== config && !isTesting) {
@@ -66,29 +68,30 @@ export function SilenceSettingsPanel({
       setIsTesting(true);
       setTestResult(null);
       const jobId = `silence-test-${Date.now()}`;
-      
-      const unlisten = await listen("media-job", (event: { payload: { jobId: string; state: string; message?: string; error?: string } }) => {
+
+      const unlisten = await listen<MediaJobEvent>("media-job", (event) => {
         const payload = event.payload;
         if (payload.jobId !== jobId) return;
-        
-        if (payload.state === "Completed") {
-           const intervals: SilenceInterval[] = JSON.parse(payload.message || "[]");
-           const totalDurationMs = intervals.reduce((acc, curr) => acc + curr.durationMs, 0);
-           setTestResult({ count: intervals.length, totalDurationMs });
-           unlisten();
-           setIsTesting(false);
-        } else if (payload.state === "Failed" || payload.state === "Cancelled") {
-           console.error("Silence detection failed/cancelled:", payload.error || payload.message);
-           alert("Silence detection failed: " + (payload.error || payload.message));
-           unlisten();
-           setIsTesting(false);
+
+        if (payload.state === "completed") {
+          const result = payload.result as SilenceDetectionResult | undefined;
+          const intervals = result?.intervals ?? [];
+          const totalDurationMs = intervals.reduce((acc, curr) => acc + curr.durationMs, 0);
+          setTestResult({ count: intervals.length, totalDurationMs });
+          unlisten();
+          setIsTesting(false);
+        } else if (payload.state === "failed" || payload.state === "cancelled") {
+          console.error("Silence detection failed/cancelled:", payload.error || payload.message);
+          alert("Silence detection failed: " + (payload.error || payload.message));
+          unlisten();
+          setIsTesting(false);
         }
       });
 
       await invoke("start_silence_detection", {
         jobId,
         path: testVideoPath,
-        settings: localConfig.settings
+        settings: localConfig.settings,
       });
     } catch (e) {
       console.error("IPC Error:", e);
@@ -105,7 +108,8 @@ export function SilenceSettingsPanel({
             Cấu hình nhận diện khoảng lặng
           </DialogTitle>
           <DialogDescription>
-            Điều chỉnh độ nhạy khi phát hiện khoảng lặng (Silence). Các thiết lập này xác định đoạn nào sẽ được đề xuất cắt bỏ.
+            Điều chỉnh độ nhạy khi phát hiện khoảng lặng (Silence). Các thiết lập này xác định đoạn
+            nào sẽ được đề xuất cắt bỏ.
           </DialogDescription>
         </DialogHeader>
 
@@ -115,58 +119,63 @@ export function SilenceSettingsPanel({
             onValueChange={(val: string) => handlePresetChange(val as SilencePreset)}
             className="grid gap-3"
           >
-            <div className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-muted/50 transition-colors">
+            <div className="flex items-start space-x-3 rounded-lg border p-4 transition-colors hover:bg-muted/50">
               <RadioGroupItem value="conservative" id="preset-conservative" className="mt-1" />
               <div className="grid gap-1.5">
-                <Label htmlFor="preset-conservative" className="font-semibold cursor-pointer">
+                <Label htmlFor="preset-conservative" className="cursor-pointer font-semibold">
                   Cẩn trọng (Conservative)
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  An toàn nhất, chỉ cắt những khoảng lặng rất rõ ràng và dài. Rất khó cắt lẹm vào chữ.
+                  An toàn nhất, chỉ cắt những khoảng lặng rất rõ ràng và dài. Rất khó cắt lẹm vào
+                  chữ.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-muted/50 transition-colors">
+            <div className="flex items-start space-x-3 rounded-lg border p-4 transition-colors hover:bg-muted/50">
               <RadioGroupItem value="balanced" id="preset-balanced" className="mt-1" />
               <div className="grid gap-1.5">
-                <Label htmlFor="preset-balanced" className="font-semibold cursor-pointer">
+                <Label htmlFor="preset-balanced" className="cursor-pointer font-semibold">
                   Cân bằng (Balanced) - Khuyên dùng
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  Lý tưởng cho đa số video Vlog/Podcast, nhắm tới việc cắt bớt thời gian nghỉ thở tiêu chuẩn.
+                  Lý tưởng cho đa số video Vlog/Podcast, nhắm tới việc cắt bớt thời gian nghỉ thở
+                  tiêu chuẩn.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-muted/50 transition-colors">
+            <div className="flex items-start space-x-3 rounded-lg border p-4 transition-colors hover:bg-muted/50">
               <RadioGroupItem value="aggressive" id="preset-aggressive" className="mt-1" />
               <div className="grid gap-1.5">
-                <Label htmlFor="preset-aggressive" className="font-semibold cursor-pointer">
+                <Label htmlFor="preset-aggressive" className="cursor-pointer font-semibold">
                   Tích cực (Aggressive)
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  Cắt sát từng nhịp nghỉ ngắn. Phù hợp cho video nhịp độ nhanh (Tiktok/Shorts) nhưng có thể cắt lẹm hơi thở.
+                  Cắt sát từng nhịp nghỉ ngắn. Phù hợp cho video nhịp độ nhanh (Tiktok/Shorts) nhưng
+                  có thể cắt lẹm hơi thở.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-muted/50 transition-colors">
+            <div className="flex items-start space-x-3 rounded-lg border p-4 transition-colors hover:bg-muted/50">
               <RadioGroupItem value="custom" id="preset-custom" className="mt-1" />
-              <div className="grid gap-1.5 w-full">
-                <Label htmlFor="preset-custom" className="font-semibold cursor-pointer">
+              <div className="grid w-full gap-1.5">
+                <Label htmlFor="preset-custom" className="cursor-pointer font-semibold">
                   Tùy chỉnh (Advanced)
                 </Label>
-                <p className="text-sm text-muted-foreground mb-2">
+                <p className="mb-2 text-sm text-muted-foreground">
                   Tự thiết lập ngưỡng cường độ âm thanh và thời gian.
                 </p>
-                
+
                 {localConfig.preset === "custom" && (
-                  <div className="space-y-6 pt-3 border-t mt-2">
+                  <div className="mt-2 space-y-6 border-t pt-3">
                     <div className="grid gap-3">
-                      <div className="flex justify-between items-center">
+                      <div className="flex items-center justify-between">
                         <Label>Ngưỡng âm lượng (Threshold)</Label>
-                        <span className="text-xs text-muted-foreground font-mono bg-muted px-2 py-0.5 rounded">{localConfig.settings.thresholdDb} dB</span>
+                        <span className="rounded bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+                          {localConfig.settings.thresholdDb} dB
+                        </span>
                       </div>
                       <input
                         type="range"
@@ -174,18 +183,25 @@ export function SilenceSettingsPanel({
                         max="-10"
                         step="1"
                         value={localConfig.settings.thresholdDb}
-                        onChange={(e) => setLocalConfig({
-                          ...localConfig,
-                          settings: { ...localConfig.settings, thresholdDb: parseInt(e.target.value) }
-                        })}
+                        onChange={(e) =>
+                          setLocalConfig({
+                            ...localConfig,
+                            settings: {
+                              ...localConfig.settings,
+                              thresholdDb: parseInt(e.target.value),
+                            },
+                          })
+                        }
                         className="w-full accent-primary"
                       />
                     </div>
-                    
+
                     <div className="grid gap-3">
-                      <div className="flex justify-between items-center">
+                      <div className="flex items-center justify-between">
                         <Label>Thời gian tối thiểu (Duration)</Label>
-                        <span className="text-xs text-muted-foreground font-mono bg-muted px-2 py-0.5 rounded">{localConfig.settings.minDurationMs} ms</span>
+                        <span className="rounded bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+                          {localConfig.settings.minDurationMs} ms
+                        </span>
                       </div>
                       <input
                         type="range"
@@ -193,10 +209,15 @@ export function SilenceSettingsPanel({
                         max="3000"
                         step="50"
                         value={localConfig.settings.minDurationMs}
-                        onChange={(e) => setLocalConfig({
-                          ...localConfig,
-                          settings: { ...localConfig.settings, minDurationMs: parseInt(e.target.value) }
-                        })}
+                        onChange={(e) =>
+                          setLocalConfig({
+                            ...localConfig,
+                            settings: {
+                              ...localConfig.settings,
+                              minDurationMs: parseInt(e.target.value),
+                            },
+                          })
+                        }
                         className="w-full accent-primary"
                       />
                     </div>
@@ -207,7 +228,7 @@ export function SilenceSettingsPanel({
           </RadioGroup>
         </div>
 
-        <div className="flex items-center justify-between mt-2 pt-4 border-t">
+        <div className="mt-2 flex items-center justify-between border-t pt-4">
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -225,13 +246,14 @@ export function SilenceSettingsPanel({
             </Button>
 
             {testResult && (
-              <div className="text-sm text-muted-foreground animate-in fade-in slide-in-from-left-2 flex items-center gap-1.5 bg-primary/10 text-primary px-3 py-1.5 rounded-md">
+              <div className="flex items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 text-sm text-muted-foreground text-primary animate-in fade-in slide-in-from-left-2">
                 <CheckCircle2 className="h-4 w-4" />
-                Dự kiến cắt: <span className="font-semibold">{testResult.count}</span> đoạn ({(testResult.totalDurationMs / 1000).toFixed(1)}s)
+                Dự kiến cắt: <span className="font-semibold">{testResult.count}</span> đoạn (
+                {(testResult.totalDurationMs / 1000).toFixed(1)}s)
               </div>
             )}
           </div>
-          
+
           <div className="flex gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isTesting}>
               Hủy

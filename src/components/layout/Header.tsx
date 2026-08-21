@@ -1,7 +1,7 @@
 import { Bell, Menu, Sun, Moon } from "lucide-react";
 import { useAppStore } from "../../store";
 import { Button } from "../ui/button";
-import { useTheme } from "../theme-provider";
+import { useTheme } from "../theme-context";
 import { ModelManager } from "../settings/ModelManager";
 
 export function Header() {
@@ -15,7 +15,7 @@ export function Header() {
           variant="ghost"
           size="icon"
           onClick={toggleSidebar}
-          className="lg:hidden text-muted-foreground"
+          className="text-muted-foreground lg:hidden"
         >
           <Menu className="h-5 w-5" />
         </Button>
@@ -29,7 +29,7 @@ export function Header() {
           variant="ghost"
           size="icon"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          className="text-muted-foreground relative"
+          className="relative text-muted-foreground"
         >
           <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
           <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
@@ -38,7 +38,7 @@ export function Header() {
         <Button variant="ghost" size="icon" className="text-muted-foreground">
           <Bell className="h-5 w-5" />
         </Button>
-        <div className="ml-2 h-8 w-8 rounded-full border border-primary/30 bg-primary/20"></div>
+        <div className="ml-2 h-8 w-8 rounded-full border border-primary/30 bg-primary/20" />
       </div>
     </header>
   );

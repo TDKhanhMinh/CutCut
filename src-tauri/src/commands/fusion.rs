@@ -1,8 +1,8 @@
-use tauri::command;
 use crate::models::fusion::{FusionConfig, FusionResult};
 use crate::models::silence::SilenceInterval;
 use crate::models::vad::VadAnalysisResult;
 use crate::services::fusion_service::FusionService;
+use tauri::command;
 
 #[command]
 pub async fn fuse_non_speech_intervals(

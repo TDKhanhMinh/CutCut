@@ -1,12 +1,12 @@
 import { AppLayout } from "./components/layout/AppLayout";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { HashRouter, Routes, Route } from "react-router-dom";
 import { Home } from "./pages/Home";
 import { Settings } from "./pages/Settings";
 import { Workspace } from "./components/layout/Workspace";
 
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Home />} />
@@ -14,7 +14,7 @@ function App() {
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 

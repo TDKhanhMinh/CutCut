@@ -2,16 +2,23 @@ import { Clapperboard, Home, Settings, Layers, FilePlus, FolderOpen, Save } from
 import { useAppStore } from "../../store";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { useNavigate, useLocation } from "react-router-dom";
-import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { Project } from "../../types/project";
 import { useEffect } from "react";
 import { Button } from "../ui/button";
+import { createProject, loadProjectFromDisk } from "@/services/project";
 
 export function Sidebar() {
   const sidebarOpen = useAppStore((state) => state.sidebarOpen);
   const location = useLocation();
-  const { activeProject, saveState, isDirty, setProject, saveProject } = useProjectStore();
+  const {
+    activeProject,
+    saveState,
+    isDirty,
+    setProject,
+    saveProject,
+    saveProjectAs,
+    lastSaveError,
+  } = useProjectStore();
 
   // Autosave logic (debounce 3s)
   useEffect(() => {
@@ -24,10 +31,10 @@ export function Sidebar() {
 
   const handleNewProject = async () => {
     try {
-      const p = await invoke<Project>('create_project');
+      const p = await createProject();
       const path = await save({
-        filters: [{ name: 'CutCut Project', extensions: ['cutcut'] }],
-        defaultPath: 'Untitled.cutcut'
+        filters: [{ name: "CutCut Project", extensions: ["cutcut"] }],
+        defaultPath: "Untitled.cutcut",
       });
       if (path) {
         setProject(p, path);
@@ -42,16 +49,28 @@ export function Sidebar() {
   const handleOpenProject = async () => {
     try {
       const selected = await open({
-        filters: [{ name: 'CutCut Project', extensions: ['cutcut'] }],
-        multiple: false
+        filters: [{ name: "CutCut Project", extensions: ["cutcut"] }],
+        multiple: false,
       });
       if (selected) {
         const path = Array.isArray(selected) ? selected[0] : selected;
-        const res = await invoke<{project: Project, path: string}>('load_project_from_disk', { path });
+        const res = await loadProjectFromDisk(path);
         setProject(res.project, res.path);
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleSaveAs = async () => {
+    if (!activeProject) return;
+
+    const path = await save({
+      filters: [{ name: "CutCut Project", extensions: ["cutcut"] }],
+      defaultPath: "Untitled.cutcut",
+    });
+    if (path) {
+      await saveProjectAs(path);
     }
   };
 
@@ -78,11 +97,11 @@ export function Sidebar() {
         />
 
         <div className="my-2 border-t border-border"></div>
-        
+
         <Button
           variant="ghost"
           onClick={handleNewProject}
-          className="flex w-full items-center justify-center gap-3 p-3 lg:justify-start lg:px-4 text-muted-foreground"
+          className="flex w-full items-center justify-center gap-3 p-3 text-muted-foreground lg:justify-start lg:px-4"
         >
           <FilePlus className="h-5 w-5" />
           <span className="hidden text-sm font-medium lg:inline-block">New Project</span>
@@ -91,34 +110,50 @@ export function Sidebar() {
         <Button
           variant="ghost"
           onClick={handleOpenProject}
-          className="flex w-full items-center justify-center gap-3 p-3 lg:justify-start lg:px-4 text-muted-foreground"
+          className="flex w-full items-center justify-center gap-3 p-3 text-muted-foreground lg:justify-start lg:px-4"
         >
           <FolderOpen className="h-5 w-5" />
           <span className="hidden text-sm font-medium lg:inline-block">Open Project</span>
         </Button>
-        
+
         {activeProject && (
-          <Button
-            variant="ghost"
-            onClick={() => saveProject()}
-            className="flex w-full items-center justify-center gap-3 p-3 lg:justify-start lg:px-4 text-muted-foreground"
-          >
-            <Save className="h-5 w-5" />
-            <span className="hidden text-sm font-medium lg:inline-block">Save</span>
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => saveProject()}
+              className="flex w-full items-center justify-center gap-3 p-3 text-muted-foreground lg:justify-start lg:px-4"
+            >
+              <Save className="h-5 w-5" />
+              <span className="hidden text-sm font-medium lg:inline-block">Save</span>
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={handleSaveAs}
+              className="flex w-full items-center justify-center gap-3 p-3 text-muted-foreground lg:justify-start lg:px-4"
+            >
+              <Save className="h-5 w-5" />
+              <span className="hidden text-sm font-medium lg:inline-block">Save As</span>
+            </Button>
+          </>
         )}
       </nav>
 
       {activeProject && (
-          <div className="w-full p-2 lg:p-4 text-xs font-medium text-center lg:text-left text-muted-foreground">
-              {saveState === 'saving' && <span className="text-yellow-500">Saving...</span>}
-              {saveState === 'saved' && <span className="text-green-500">All changes saved</span>}
-              {saveState === 'error' && <span className="text-red-500">Save failed!</span>}
-              {saveState === 'idle' && isDirty && <span className="text-yellow-500">Unsaved changes</span>}
-          </div>
+        <div className="w-full p-2 text-center text-xs font-medium text-muted-foreground lg:p-4 lg:text-left">
+          {saveState === "saving" && <span className="text-yellow-500">Saving...</span>}
+          {saveState === "saved" && <span className="text-green-500">All changes saved</span>}
+          {saveState === "error" && (
+            <span className="text-red-500" title={lastSaveError ?? undefined}>
+              Save failed!
+            </span>
+          )}
+          {saveState === "idle" && isDirty && (
+            <span className="text-yellow-500">Unsaved changes</span>
+          )}
+        </div>
       )}
 
-      <div className="w-full p-2 lg:p-4 border-t border-border">
+      <div className="w-full border-t border-border p-2 lg:p-4">
         <NavItem
           icon={<Settings className="h-5 w-5" />}
           label="Settings"
