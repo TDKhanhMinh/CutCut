@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod ai_merger;
 pub mod artifact_registry;
 pub mod audio_extraction_service;
 pub mod auth_session;
@@ -15,7 +16,6 @@ pub mod resource_manager;
 pub mod runtime_preset;
 pub mod silence_detector;
 pub mod style_mapper;
-pub mod ai_merger;
 pub mod subtitle_generator;
 pub mod suggestion_service;
 pub mod transcript_parser;

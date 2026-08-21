@@ -148,7 +148,13 @@ pub fn validate_and_normalize(
                         valid = false;
                     }
                 }
-                (EditActionType::Cut | EditActionType::Keep | EditActionType::Highlight | EditActionType::Mute, _) => {
+                (
+                    EditActionType::Cut
+                    | EditActionType::Keep
+                    | EditActionType::Highlight
+                    | EditActionType::Mute,
+                    _,
+                ) => {
                     issues.push(issue(
                         IssueLevel::Error,
                         "Cut/keep/mute actions cannot carry a typed payload",

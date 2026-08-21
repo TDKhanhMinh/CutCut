@@ -94,7 +94,10 @@ mod tests {
         };
 
         let json = serde_json::to_value(action).unwrap();
-        assert_eq!(json.get("type").and_then(|value| value.as_str()), Some("cut"));
+        assert_eq!(
+            json.get("type").and_then(|value| value.as_str()),
+            Some("cut")
+        );
         assert!(json.get("actionType").is_none());
     }
 }

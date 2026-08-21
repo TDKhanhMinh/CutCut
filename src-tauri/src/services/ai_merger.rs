@@ -22,10 +22,8 @@ impl AiMergerService {
             let same_range = |existing: &EditAction| {
                 existing.action_type == action_type
                     && existing.source_media_id == ai_action.source_media_id
-                    && existing.start_ms.abs_diff(ai_action.start_ms)
-                        <= Self::OVERLAP_TOLERANCE_MS
-                    && existing.end_ms.abs_diff(ai_action.end_ms)
-                        <= Self::OVERLAP_TOLERANCE_MS
+                    && existing.start_ms.abs_diff(ai_action.start_ms) <= Self::OVERLAP_TOLERANCE_MS
+                    && existing.end_ms.abs_diff(ai_action.end_ms) <= Self::OVERLAP_TOLERANCE_MS
             };
 
             if project.edit_plan.actions.iter().any(|existing| {
