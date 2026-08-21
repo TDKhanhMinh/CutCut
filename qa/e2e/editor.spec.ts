@@ -56,6 +56,26 @@ test('opens the local-first editor shell without uploading media', async ({ page
   await expect(page.locator('input[type=file]')).toHaveCount(0);
 });
 
+test('desktop breakpoint and theme smoke checks stay usable', async ({ page }) => {
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 1440, height: 900 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/#/');
+    await expect(page.getByRole('heading', { name: /Welcome to CutCut/i })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+    expect(overflow, `horizontal overflow at ${viewport.width}x${viewport.height}`).toBe(false);
+  }
+
+  const themeToggle = page.getByRole('button', { name: /toggle theme|đổi giao diện/i });
+  await themeToggle.focus();
+  await expect(themeToggle).toBeFocused();
+  await themeToggle.click();
+  await expect(page.locator('html')).toHaveClass(/(dark|light)/);
+});
+
 test('ships the valid, corrupted and portable project fixtures locally', async () => {
   const fixtureRoot = resolve('qa/fixtures');
   const sample = resolve(fixtureRoot, 'sample.mp4');
@@ -102,6 +122,22 @@ test('settings can switch and persist EN/VI locale independently of project data
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
   await expect(language).toHaveValue('en');
+});
+
+test('settings can switch and persist the Vietnamese locale', async ({ page }) => {
+  await page.goto('/#/settings');
+  const language = page.getByRole('combobox', { name: /language|ngôn ngữ/i });
+  await language.selectOption('vi');
+  await expect(page.getByRole('heading', { name: 'Cài đặt' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Cài đặt' })).toBeVisible();
+  await expect(language).toHaveValue('vi');
+});
+
+test('localization key and hard-coded literal validator passes', async () => {
+  const validator = resolve('scripts/validation/task46-localization.mjs');
+  const output = execFileSync(process.execPath, [validator], { encoding: 'utf8' });
+  expect(output).toContain('Task46 localization validation PASS');
 });
 
 test('BYOK UI never exposes a stored full key', async ({ page }) => {

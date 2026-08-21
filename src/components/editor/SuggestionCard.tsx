@@ -60,7 +60,7 @@ export function SuggestionCard({ suggestion, onToggle, onPreview }: SuggestionCa
             {formatTime(startMs)} - {formatTime(endMs)}
           </span>
           {suggestion.reviewRequired && (
-            <span className="text-xs text-amber-600">Review required — segment timing</span>
+            <span className="text-xs text-amber-600">{t("editor.reviewRequired")}</span>
           )}
         </div>
 

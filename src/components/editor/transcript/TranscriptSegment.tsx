@@ -2,6 +2,7 @@ import { memo, useState, useRef, useEffect, KeyboardEvent } from "react";
 import { TranscriptSegment as ITranscriptSegment } from "@/types/transcript";
 import { cn } from "@/lib/utils";
 import { normalizeTranscriptText } from "@/lib/transcript-edit";
+import { useI18n } from "@/i18n";
 
 interface TranscriptSegmentProps {
   segment: ITranscriptSegment;
@@ -32,6 +33,7 @@ export const TranscriptSegment = memo(
     onEdit,
     onRevert,
   }: TranscriptSegmentProps) => {
+    const { t } = useI18n();
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(segment.text);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -157,7 +159,7 @@ export const TranscriptSegment = memo(
                   (isModified || segment.isModified) && "font-medium text-amber-500",
                   !isCut && "group-hover:opacity-90",
                 )}
-                title="Double click to edit"
+                title={t("editor.editTranscript")}
               >
                 {segment.text}
               </span>
@@ -165,14 +167,14 @@ export const TranscriptSegment = memo(
                 <button
                   type="button"
                   className="shrink-0 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                  aria-label={`Revert transcript segment ${segment.id}`}
+                  aria-label={t("editor.revertTranscript")}
                   onClick={(event) => {
                     event.stopPropagation();
                     onRevert(segment.id);
                   }}
                   onDoubleClick={(event) => event.stopPropagation()}
                 >
-                  Revert
+                  {t("editor.revert")}
                 </button>
               )}
             </div>

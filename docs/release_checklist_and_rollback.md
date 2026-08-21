@@ -1,5 +1,9 @@
 # Windows beta release, updater and rollback checklist
 
+The beta channel is Windows-only and produces explicit NSIS and MSI bundles;
+the version source of truth is `package.json` and `src-tauri/tauri.conf.json`
+must match it before a release build.
+
 ## Before publishing
 
 1. Replace `UNCONFIGURED_MINISIGN_PUBLIC_KEY` in `src-tauri/tauri.conf.json`

@@ -42,7 +42,9 @@ export function sanitizeTelemetryString(value: string): string {
 
 function isEnabled(): boolean {
   if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(enabledKey) !== "false";
+  // Telemetry is an explicit opt-in. A missing preference must not enqueue
+  // startup or crash diagnostics before the user has made a privacy choice.
+  return window.localStorage.getItem(enabledKey) === "true";
 }
 
 export function redactTelemetryProperties(
@@ -79,6 +81,11 @@ async function flushQueue(): Promise<void> {
   if (!isEnabled() || typeof window === "undefined") return;
   const endpoint = import.meta.env.VITE_TELEMETRY_ENDPOINT as string | undefined;
   if (!endpoint) return;
+  try {
+    if (new URL(endpoint).protocol !== "https:") return;
+  } catch {
+    return;
+  }
   const events = readQueue();
   if (events.length === 0) return;
   try {
