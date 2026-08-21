@@ -2,6 +2,43 @@ use crate::services::auth_session::{AuthSession, AuthSessionStore};
 use keyring::Entry;
 use tauri::{AppHandle, Manager};
 
+pub(crate) const SUPABASE_AUTH_KEY: &str = "supabase-auth-session";
+pub(crate) const GEMINI_BYOK_KEY: &str = "gemini-byok";
+
+fn secure_entry(key: &str) -> Result<Entry, String> {
+    let service_key = match key {
+        SUPABASE_AUTH_KEY => SUPABASE_AUTH_KEY,
+        GEMINI_BYOK_KEY => GEMINI_BYOK_KEY,
+        _ => return Err("Unsupported secure credential key".into()),
+    };
+    Entry::new("cutcut", service_key).map_err(|error| error.to_string())
+}
+
+pub(crate) fn read_secure_value(key: &str) -> Result<Option<String>, String> {
+    let entry = secure_entry(key)?;
+    match entry.get_password() {
+        Ok(password) => Ok(Some(password)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+pub(crate) fn write_secure_value(key: &str, value: &str) -> Result<(), String> {
+    if value.is_empty() || value.len() > 16_384 || value.chars().any(char::is_whitespace) {
+        return Err("Invalid secure credential".into());
+    }
+    secure_entry(key)?
+        .set_password(value)
+        .map_err(|error| error.to_string())
+}
+
+pub(crate) fn delete_secure_value(key: &str) -> Result<(), String> {
+    match secure_entry(key)?.delete_credential() {
+        Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 #[tauri::command]
 pub async fn set_auth_session(
     app: AppHandle,
@@ -40,29 +77,15 @@ pub async fn clear_auth_session(app: AppHandle) {
 
 #[tauri::command]
 pub fn set_secure_token(key: String, value: String) -> Result<(), String> {
-    let target = format!("cutcut_app_{}", key);
-    let entry = Entry::new(&target, "cutcut_user").map_err(|e| e.to_string())?;
-    entry.set_password(&value).map_err(|e| e.to_string())?;
-    Ok(())
+    write_secure_value(&key, &value)
 }
 
 #[tauri::command]
 pub fn get_secure_token(key: String) -> Result<Option<String>, String> {
-    let target = format!("cutcut_app_{}", key);
-    let entry = Entry::new(&target, "cutcut_user").map_err(|e| e.to_string())?;
-    match entry.get_password() {
-        Ok(password) => Ok(Some(password)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(error) => Err(error.to_string()),
-    }
+    read_secure_value(&key)
 }
 
 #[tauri::command]
 pub fn delete_secure_token(key: String) -> Result<(), String> {
-    let target = format!("cutcut_app_{}", key);
-    let entry = Entry::new(&target, "cutcut_user").map_err(|e| e.to_string())?;
-    match entry.delete_credential() {
-        Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(error) => Err(error.to_string()),
-    }
+    delete_secure_value(&key)
 }

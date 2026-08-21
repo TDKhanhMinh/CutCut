@@ -12,6 +12,8 @@ import {
   type MediaJobEvent,
 } from "@/services/media";
 import { useProjectStore } from "@/stores/useProjectStore";
+import { telemetry } from "@/services/telemetry";
+import { useI18n } from "@/i18n";
 
 interface ExportPanelProps {
   /** Source-time playhead used as the default Accurate Preview range start. */
@@ -19,6 +21,7 @@ interface ExportPanelProps {
 }
 
 export function ExportPanel({ previewStartMs = 0 }: ExportPanelProps) {
+  const { t } = useI18n();
   const activeProject = useProjectStore((state) => state.activeProject);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -78,12 +81,15 @@ export function ExportPanel({ previewStartMs = 0 }: ExportPanelProps) {
         setProgress(1);
         setExporting(false);
         setResult("Export completed successfully!");
+        telemetry.track("export_completed");
       } else if (event.state === "failed") {
         setExporting(false);
         setResult(`Export failed: ${event.error ?? "Unknown error"}`);
+        telemetry.track("export_failed", { errorCode: "media_job_failed" });
       } else if (event.state === "cancelled") {
         setExporting(false);
         setResult("Export was cancelled.");
+        telemetry.track("export_failed", { cancelled: true, errorCode: "cancelled" });
       }
     },
     [previewArtifact],
@@ -119,6 +125,7 @@ export function ExportPanel({ previewStartMs = 0 }: ExportPanelProps) {
       setResult(null);
       setProgress(0);
       setExporting(true);
+      telemetry.track("export_started");
       jobIdRef.current = null;
       setJobId(null);
       bufferedEventsRef.current = [];
@@ -135,6 +142,7 @@ export function ExportPanel({ previewStartMs = 0 }: ExportPanelProps) {
       console.error(e);
       setExporting(false);
       setResult(`Failed to start export: ${e instanceof Error ? e.message : String(e)}`);
+      telemetry.track("export_failed", { errorCode: e instanceof Error ? e.name : "unknown" });
     }
   };
 
@@ -203,12 +211,12 @@ export function ExportPanel({ previewStartMs = 0 }: ExportPanelProps) {
 
   return (
     <div className="m-4 max-w-xl rounded-lg border bg-card p-4 text-card-foreground shadow-sm">
-      <h3 className="mb-4 text-lg font-bold">Export Prototype</h3>
+      <h3 className="mb-4 text-lg font-bold">{t("editor.exportTitle")}</h3>
 
       {!exporting ? (
         <div className="space-y-3">
           <div className="grid grid-cols-[1fr_auto] items-center gap-2 text-sm">
-            <label htmlFor="accurate-preview-start">Preview start (ms)</label>
+            <label htmlFor="accurate-preview-start">{t("editor.previewStart")}</label>
             <Input
               id="accurate-preview-start"
               type="number"
@@ -226,29 +234,29 @@ export function ExportPanel({ previewStartMs = 0 }: ExportPanelProps) {
               className="col-span-2 justify-self-end"
               onClick={() => setRangeStartMs(Math.max(0, Math.round(previewStartMs)))}
             >
-              Use playhead
+              {t("editor.usePlayhead")}
             </Button>
             <p
               id="accurate-preview-range-help"
               className="col-span-2 text-xs text-muted-foreground"
             >
-              Accurate Preview tự clamp range còn 3–5 giây trong source timeline.
+              {t("editor.previewRangeHelp")}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={handleExport}>Export to MP4</Button>
+            <Button onClick={handleExport}>{t("editor.exportMp4")}</Button>
             <Button
               variant="secondary"
               onClick={handleAccuratePreview}
               disabled={previewing || !activeProject?.media.length}
             >
               {previewing
-                ? `Rendering preview (${Math.round(previewProgress * 100)}%)`
-                : "Accurate Preview (3–5s)"}
+                ? t("editor.renderingPreview", { percent: Math.round(previewProgress * 100) })
+                : t("editor.accuratePreview")}
             </Button>
             {previewing && (
               <Button variant="destructive" onClick={handleCancel}>
-                Cancel preview
+                {t("editor.cancelPreview")}
               </Button>
             )}
           </div>
@@ -256,7 +264,7 @@ export function ExportPanel({ previewStartMs = 0 }: ExportPanelProps) {
       ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between text-sm font-medium">
-            <span>Exporting...</span>
+            <span>{t("editor.exporting")}</span>
             <span>{Math.round(progress * 100)}%</span>
           </div>
           <div className="h-2.5 w-full rounded-full bg-secondary">
@@ -266,7 +274,7 @@ export function ExportPanel({ previewStartMs = 0 }: ExportPanelProps) {
             ></div>
           </div>
           <Button variant="destructive" onClick={handleCancel}>
-            Cancel
+            {t("editor.cancel")}
           </Button>
         </div>
       )}
@@ -274,14 +282,14 @@ export function ExportPanel({ previewStartMs = 0 }: ExportPanelProps) {
       {result && <div className="mt-4 rounded bg-muted p-3 text-sm font-medium">{result}</div>}
       {previewPath && !previewing && (
         <div className="mt-4 space-y-2">
-          <div className="text-sm font-medium">Rendered preview</div>
+          <div className="text-sm font-medium">{t("editor.renderedPreview")}</div>
           <video
             className="max-h-72 w-full rounded border"
             controls
             src={convertFileSrc(previewPath)}
           />
           {previewArtifact?.status === "valid" && (
-            <div className="text-xs text-muted-foreground">Cached by render signature.</div>
+            <div className="text-xs text-muted-foreground">{t("editor.cachedRender")}</div>
           )}
         </div>
       )}

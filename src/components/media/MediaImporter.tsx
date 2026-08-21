@@ -3,12 +3,14 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { Button } from "@/components/ui/button";
 import { readMediaMetadata } from "@/services/media";
 import type { MediaSourceMetadata } from "@/types/media";
+import { useI18n } from "@/i18n";
 
 export function MediaImporter({
   onMetadataParsed,
 }: {
   onMetadataParsed: (meta: MediaSourceMetadata) => void;
 }) {
+  const { t } = useI18n();
   const [metadata, setMetadata] = useState<MediaSourceMetadata | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,20 +51,20 @@ export function MediaImporter({
 
   return (
     <div className="m-4 max-w-xl rounded-lg border bg-card p-4 text-card-foreground shadow-sm">
-      <h2 className="mb-4 text-xl font-bold">Media Importer (Task 7 Test)</h2>
+      <h2 className="mb-4 text-xl font-bold">{t("media.importerTitle")}</h2>
       <Button onClick={handleSelectFile} disabled={loading}>
-        {loading ? "Reading metadata..." : "Select Video File"}
+        {loading ? t("media.readingMetadata") : t("media.selectVideo")}
       </Button>
 
       {error && (
         <div className="mt-4 rounded border border-destructive bg-destructive/20 p-3 text-sm text-destructive">
-          <strong>Error:</strong> {error}
+          <strong>{t("common.error")}:</strong> {error}
         </div>
       )}
 
       {metadata && (
         <div className="mt-4">
-          <h3 className="mb-2 font-semibold">Metadata Parsed:</h3>
+          <h3 className="mb-2 font-semibold">{t("media.metadataParsed")}:</h3>
           <pre className="overflow-x-auto rounded bg-muted p-3 text-sm">
             {JSON.stringify(metadata, null, 2)}
           </pre>

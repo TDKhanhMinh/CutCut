@@ -7,6 +7,7 @@ import { useTranscriptSync } from "@/hooks/useTranscriptSync";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { applyTranscriptTextEdit, revertTranscriptTextEdit } from "@/lib/transcript-edit";
 import { VideoPreview, type VideoPreviewHandle } from "@/components/media/VideoPreview";
+import { useI18n } from "@/i18n";
 
 const mockTranscript: Transcript = {
   id: "t1",
@@ -25,6 +26,7 @@ const mockTranscript: Transcript = {
 };
 
 export function Workspace() {
+  const { t } = useI18n();
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isSilenceSettingsOpen, setIsSilenceSettingsOpen] = useState(false);
@@ -112,12 +114,12 @@ export function Workspace() {
               className="mt-2 cursor-pointer rounded-md border border-border bg-background px-4 py-2 text-sm text-foreground hover:bg-muted"
               onClick={() => setIsSilenceSettingsOpen(true)}
             >
-              Cấu hình Khoảng lặng
+              {t("editor.silenceConfig")}
             </button>
           </>
         ) : (
           <div className="max-w-md space-y-4 rounded-xl border border-dashed border-border bg-background p-8 text-center shadow-sm">
-            <h3 className="text-lg font-medium">Video Preview Area</h3>
+            <h3 className="text-lg font-medium">{t("editor.noProject")}</h3>
             <p className="text-sm text-muted-foreground">
               Current simulated time: {(currentTime / 1000).toFixed(1)}s
             </p>
@@ -126,19 +128,19 @@ export function Workspace() {
                 className="cursor-pointer rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
                 onClick={() => setIsPlaying((previous) => !previous)}
               >
-                {isPlaying ? "Pause Playback" : "Start Playback"}
+                {isPlaying ? t("editor.pausePlayback") : t("editor.startPlayback")}
               </button>
               <button
                 className="cursor-pointer rounded-md bg-secondary px-4 py-2 text-sm text-secondary-foreground hover:bg-muted"
                 onClick={() => setCurrentTime((previous) => previous + 10000)}
               >
-                +10s Seek
+                {t("editor.seek10")}
               </button>
               <button
                 className="cursor-pointer rounded-md border border-border bg-background px-4 py-2 text-sm text-foreground hover:bg-muted"
                 onClick={() => setIsSilenceSettingsOpen(true)}
               >
-                Cấu hình Khoảng lặng
+                {t("editor.silenceConfig")}
               </button>
             </div>
           </div>

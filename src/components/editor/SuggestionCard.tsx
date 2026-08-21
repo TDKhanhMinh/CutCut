@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Play } from "lucide-react";
 import { EditAction } from "@/types/project";
 import { DetectorEvidence } from "@/types/fusion";
+import { useI18n } from "@/i18n";
 
 export interface CutSuggestion {
   action: EditAction;
@@ -21,6 +22,7 @@ interface SuggestionCardProps {
 }
 
 export function SuggestionCard({ suggestion, onToggle, onPreview }: SuggestionCardProps) {
+  const { t } = useI18n();
   const startMs = suggestion.action.startMs;
   const endMs = suggestion.action.endMs;
   const durationSec = ((endMs - startMs) / 1000).toFixed(1);
@@ -34,10 +36,11 @@ export function SuggestionCard({ suggestion, onToggle, onPreview }: SuggestionCa
   };
 
   const getReasonLabel = (reason: string) => {
-    if (reason === "silence") return "Silence";
-    if (reason === "noise_only") return "Background Noise";
-    if (reason === "uncertain") return "Uncertain Speech";
-    if (reason.startsWith("filler:")) return `Filler: ${reason.slice("filler:".length)}`;
+    if (reason === "silence") return t("editor.silence");
+    if (reason === "noise_only") return t("editor.backgroundNoise");
+    if (reason === "uncertain") return t("editor.uncertainSpeech");
+    if (reason.startsWith("filler:"))
+      return `${t("editor.filler")}: ${reason.slice("filler:".length)}`;
     return reason;
   };
 
@@ -46,7 +49,9 @@ export function SuggestionCard({ suggestion, onToggle, onPreview }: SuggestionCa
       <CardContent className="flex items-center justify-between p-4">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="font-semibold">{durationSec}s Cut</span>
+            <span className="font-semibold">
+              {durationSec}s {t("editor.cut")}
+            </span>
             <Badge variant={getBadgeVariant(suggestion.action.reason)}>
               {getReasonLabel(suggestion.action.reason)}
             </Badge>
@@ -63,13 +68,18 @@ export function SuggestionCard({ suggestion, onToggle, onPreview }: SuggestionCa
           <Button
             variant="outline"
             size="icon"
-            aria-label={`Preview ${formatTime(startMs)} to ${formatTime(endMs)}`}
+            aria-label={t("editor.previewRange", {
+              start: formatTime(startMs),
+              end: formatTime(endMs),
+            })}
             onClick={() => onPreview(startMs, endMs)}
           >
             <Play className="h-4 w-4" />
           </Button>
           <div className="flex items-center gap-2">
-            <span className="text-sm">{suggestion.action.enabled ? "Remove" : "Keep"}</span>
+            <span className="text-sm">
+              {suggestion.action.enabled ? t("editor.remove") : t("editor.keep")}
+            </span>
             <Switch
               checked={!suggestion.action.enabled}
               onCheckedChange={(checked) => onToggle(suggestion.action.id, !checked)}

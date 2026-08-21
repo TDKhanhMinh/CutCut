@@ -13,6 +13,7 @@ import {
   SilenceDetectionResult,
 } from "@/types/silence";
 import type { MediaJobEvent } from "@/services/media";
+import { useI18n } from "@/i18n";
 
 interface SilenceSettingsPanelProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ export function SilenceSettingsPanel({
   onChange,
   testVideoPath,
 }: SilenceSettingsPanelProps) {
+  const { t } = useI18n();
   const [localConfig, setLocalConfig] = useState<SilenceConfig>(config);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ count: number; totalDurationMs: number } | null>(
@@ -61,7 +63,7 @@ export function SilenceSettingsPanel({
 
   const handleTest = async () => {
     if (!testVideoPath) {
-      alert("No active video to test detection against. Please import a video first.");
+      alert(t("settings.noActiveVideo"));
       return;
     }
     try {
@@ -82,7 +84,7 @@ export function SilenceSettingsPanel({
           setIsTesting(false);
         } else if (payload.state === "failed" || payload.state === "cancelled") {
           console.error("Silence detection failed/cancelled:", payload.error || payload.message);
-          alert("Silence detection failed: " + (payload.error || payload.message));
+          alert(`${t("settings.silenceFailed")} ${payload.error || payload.message}`);
           unlisten();
           setIsTesting(false);
         }
@@ -105,12 +107,9 @@ export function SilenceSettingsPanel({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <VolumeX className="h-5 w-5 text-primary" />
-            Cấu hình nhận diện khoảng lặng
+            {t("settings.silenceTitle")}
           </DialogTitle>
-          <DialogDescription>
-            Điều chỉnh độ nhạy khi phát hiện khoảng lặng (Silence). Các thiết lập này xác định đoạn
-            nào sẽ được đề xuất cắt bỏ.
-          </DialogDescription>
+          <DialogDescription>{t("settings.silenceDescription")}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-6 py-4">
@@ -123,11 +122,10 @@ export function SilenceSettingsPanel({
               <RadioGroupItem value="conservative" id="preset-conservative" className="mt-1" />
               <div className="grid gap-1.5">
                 <Label htmlFor="preset-conservative" className="cursor-pointer font-semibold">
-                  Cẩn trọng (Conservative)
+                  {t("settings.conservative")}
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  An toàn nhất, chỉ cắt những khoảng lặng rất rõ ràng và dài. Rất khó cắt lẹm vào
-                  chữ.
+                  {t("settings.conservativeDescription")}
                 </p>
               </div>
             </div>
@@ -136,12 +134,9 @@ export function SilenceSettingsPanel({
               <RadioGroupItem value="balanced" id="preset-balanced" className="mt-1" />
               <div className="grid gap-1.5">
                 <Label htmlFor="preset-balanced" className="cursor-pointer font-semibold">
-                  Cân bằng (Balanced) - Khuyên dùng
+                  {t("settings.balanced")}
                 </Label>
-                <p className="text-sm text-muted-foreground">
-                  Lý tưởng cho đa số video Vlog/Podcast, nhắm tới việc cắt bớt thời gian nghỉ thở
-                  tiêu chuẩn.
-                </p>
+                <p className="text-sm text-muted-foreground">{t("settings.balancedDescription")}</p>
               </div>
             </div>
 
@@ -149,11 +144,10 @@ export function SilenceSettingsPanel({
               <RadioGroupItem value="aggressive" id="preset-aggressive" className="mt-1" />
               <div className="grid gap-1.5">
                 <Label htmlFor="preset-aggressive" className="cursor-pointer font-semibold">
-                  Tích cực (Aggressive)
+                  {t("settings.aggressive")}
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  Cắt sát từng nhịp nghỉ ngắn. Phù hợp cho video nhịp độ nhanh (Tiktok/Shorts) nhưng
-                  có thể cắt lẹm hơi thở.
+                  {t("settings.aggressiveDescription")}
                 </p>
               </div>
             </div>
@@ -162,17 +156,17 @@ export function SilenceSettingsPanel({
               <RadioGroupItem value="custom" id="preset-custom" className="mt-1" />
               <div className="grid w-full gap-1.5">
                 <Label htmlFor="preset-custom" className="cursor-pointer font-semibold">
-                  Tùy chỉnh (Advanced)
+                  {t("settings.custom")}
                 </Label>
                 <p className="mb-2 text-sm text-muted-foreground">
-                  Tự thiết lập ngưỡng cường độ âm thanh và thời gian.
+                  {t("settings.customDescription")}
                 </p>
 
                 {localConfig.preset === "custom" && (
                   <div className="mt-2 space-y-6 border-t pt-3">
                     <div className="grid gap-3">
                       <div className="flex items-center justify-between">
-                        <Label>Ngưỡng âm lượng (Threshold)</Label>
+                        <Label>{t("settings.volumeThreshold")}</Label>
                         <span className="rounded bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
                           {localConfig.settings.thresholdDb} dB
                         </span>
@@ -198,7 +192,7 @@ export function SilenceSettingsPanel({
 
                     <div className="grid gap-3">
                       <div className="flex items-center justify-between">
-                        <Label>Thời gian tối thiểu (Duration)</Label>
+                        <Label>{t("settings.minimumDuration")}</Label>
                         <span className="rounded bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
                           {localConfig.settings.minDurationMs} ms
                         </span>
@@ -242,24 +236,26 @@ export function SilenceSettingsPanel({
               ) : (
                 <PlayCircle className="h-4 w-4" />
               )}
-              {isTesting ? "Đang chạy..." : "Chạy thử (Preview)"}
+              {isTesting ? t("settings.runningTest") : t("settings.runPreview")}
             </Button>
 
             {testResult && (
               <div className="flex items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 text-sm text-muted-foreground text-primary animate-in fade-in slide-in-from-left-2">
                 <CheckCircle2 className="h-4 w-4" />
-                Dự kiến cắt: <span className="font-semibold">{testResult.count}</span> đoạn (
-                {(testResult.totalDurationMs / 1000).toFixed(1)}s)
+                {t("settings.expectedCuts", {
+                  count: testResult.count,
+                  duration: (testResult.totalDurationMs / 1000).toFixed(1),
+                })}
               </div>
             )}
           </div>
 
           <div className="flex gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isTesting}>
-              Hủy
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleSave} disabled={isTesting}>
-              Lưu cấu hình
+              {t("settings.saveConfiguration")}
             </Button>
           </div>
         </div>

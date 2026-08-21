@@ -5,6 +5,7 @@ pub mod audio_extraction_service;
 pub mod auth_session;
 pub mod cache_cleanup;
 pub mod caption_segmenter;
+pub mod crash_reporter;
 pub mod edit_validator;
 pub mod filler_detector;
 pub mod fusion_service;

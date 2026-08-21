@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useProjectStore } from "@/stores/useProjectStore";
 import type { Transcript } from "@/types/transcript";
+import { telemetry } from "@/services/telemetry";
 
 export interface WhisperRuntimeInfo {
   available: boolean;
@@ -27,13 +28,19 @@ export const transcribeAudio = (options: {
     projectPath: options.projectPath ?? null,
     replaceExisting: options.replaceExisting ?? false,
     forceReplaceModified: options.forceReplaceModified ?? false,
-  }).then((transcript) => {
-    const state = useProjectStore.getState();
-    if (options.projectPath && state.projectPath === options.projectPath && state.activeProject) {
-      state.updateProject((draft) => {
-        draft.transcript = transcript;
-        draft.updatedAt = Date.now();
-      });
-    }
-    return transcript;
-  });
+  })
+    .then((transcript) => {
+      telemetry.track("stt_completed", { modelId: options.modelId });
+      const state = useProjectStore.getState();
+      if (options.projectPath && state.projectPath === options.projectPath && state.activeProject) {
+        state.updateProject((draft) => {
+          draft.transcript = transcript;
+          draft.updatedAt = Date.now();
+        });
+      }
+      return transcript;
+    })
+    .catch((error: unknown) => {
+      telemetry.track("stt_failed", { errorCode: error instanceof Error ? error.name : "unknown" });
+      throw error;
+    });

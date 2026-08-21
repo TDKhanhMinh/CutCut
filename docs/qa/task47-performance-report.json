@@ -1,0 +1,70 @@
+﻿{
+    "generatedAt":  "2026-08-21T06:50:50.8508654Z",
+    "host":  "LAPTOP-TBTLP9L8",
+    "os":  "Microsoft Windows NT 10.0.26200.0",
+    "durationsMinutes":  [
+                             5,
+                             20,
+                             60
+                         ],
+    "results":  [
+                    {
+                        "durationMinutes":  5,
+                        "fixture":  "qa/fixtures/performance/talking-head-5-min.mp4",
+                        "measurements":  {
+                                             "ffprobe":  {
+                                                             "exitCode":  0,
+                                                             "elapsedMs":  289,
+                                                             "peakWorkingSetMb":  4.99,
+                                                             "totalProcessorTimeMs":  31
+                                                         },
+                                             "audio-extract":  {
+                                                                   "exitCode":  0,
+                                                                   "elapsedMs":  272,
+                                                                   "peakWorkingSetMb":  5.04,
+                                                                   "totalProcessorTimeMs":  391
+                                                               }
+                                         }
+                    },
+                    {
+                        "durationMinutes":  20,
+                        "fixture":  "qa/fixtures/performance/talking-head-20-min.mp4",
+                        "measurements":  {
+                                             "ffprobe":  {
+                                                             "exitCode":  0,
+                                                             "elapsedMs":  284,
+                                                             "peakWorkingSetMb":  6.88,
+                                                             "totalProcessorTimeMs":  31
+                                                         },
+                                             "audio-extract":  {
+                                                                   "exitCode":  0,
+                                                                   "elapsedMs":  803,
+                                                                   "peakWorkingSetMb":  2.77,
+                                                                   "totalProcessorTimeMs":  1516
+                                                               }
+                                         }
+                    },
+                    {
+                        "durationMinutes":  60,
+                        "fixture":  "qa/fixtures/performance/talking-head-60-min.mp4",
+                        "measurements":  {
+                                             "ffprobe":  {
+                                                             "exitCode":  0,
+                                                             "elapsedMs":  279,
+                                                             "peakWorkingSetMb":  2.55,
+                                                             "totalProcessorTimeMs":  47
+                                                         },
+                                             "audio-extract":  {
+                                                                   "exitCode":  0,
+                                                                   "elapsedMs":  1838,
+                                                                   "peakWorkingSetMb":  2.91,
+                                                                   "totalProcessorTimeMs":  4641
+                                                               }
+                                         }
+                    }
+                ],
+    "notes":  [
+                  "Run the full editor flow separately for cold startup, preview, Whisper, export, cancel and cleanup.",
+                  "Repeat each duration 2-3 times on the supported Windows beta hardware before changing limits."
+              ]
+}

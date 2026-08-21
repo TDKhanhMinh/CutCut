@@ -13,8 +13,10 @@ import { ReviewControls } from "../components/editor/ReviewControls";
 import { EditReviewPanel } from "../components/editor/EditReviewPanel";
 import { DEFAULT_SILENCE_CONFIG } from "@/types/silence";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n";
 
 export function Home() {
+  const { t } = useI18n();
   const { activeProject, updateProject, missingMediaIds } = useProjectStore();
   const { undo, redo, pastStates, futureStates } = useStore(
     useProjectStore.temporal,
@@ -34,10 +36,8 @@ export function Home() {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
         <div className="text-center">
-          <h1 className="mb-4 text-3xl font-bold">Welcome to CutCut</h1>
-          <p className="mb-8 text-muted-foreground">
-            Please create a new project or open an existing one from the sidebar.
-          </p>
+          <h1 className="mb-4 text-3xl font-bold">{t("home.welcome")}</h1>
+          <p className="mb-8 text-muted-foreground">{t("home.emptyDescription")}</p>
         </div>
       </div>
     );
@@ -60,33 +60,47 @@ export function Home() {
       <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
       <div className="mb-4 flex items-start justify-between">
         <div>
-          <h1 className="mb-1 text-2xl font-bold">CutCut Media Toolchain</h1>
-          <p className="mb-8 text-muted-foreground">
-            Prototype proving native file dialog, FFprobe metadata parsing, local video preview
-            (Asset Protocol), and FFmpeg export jobs.
-          </p>
+          <h1 className="mb-1 text-2xl font-bold">{t("home.title")}</h1>
+          <p className="mb-8 text-muted-foreground">{t("home.description")}</p>
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
             {user ? (
               <span className="mr-2 text-sm font-medium text-green-500">
-                {user.email} <span className="ml-1 rounded bg-green-500/20 px-2 py-0.5 text-xs">{entitlementLoading ? "..." : plan}</span>
+                {user.email}{" "}
+                <span className="ml-1 rounded bg-green-500/20 px-2 py-0.5 text-xs">
+                  {entitlementLoading ? "..." : plan}
+                </span>
               </span>
             ) : (
-              <span className="mr-2 text-sm text-muted-foreground">Offline / Signed Out</span>
+              <span className="mr-2 text-sm text-muted-foreground">{t("home.offline")}</span>
             )}
             {user ? (
-              <Button variant="outline" size="sm" onClick={() => void signOut()}>Sign Out</Button>
+              <Button variant="outline" size="sm" onClick={() => void signOut()}>
+                {t("home.signOut")}
+              </Button>
             ) : (
-              <Button variant="outline" size="sm" onClick={() => setAuthDialogOpen(true)}>Sign In</Button>
+              <Button variant="outline" size="sm" onClick={() => setAuthDialogOpen(true)}>
+                {t("home.signIn")}
+              </Button>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => undo()} disabled={pastStates.length === 0}>
-              <Undo2 className="mr-2 h-4 w-4" /> Undo
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => undo()}
+              disabled={pastStates.length === 0}
+            >
+              <Undo2 className="mr-2 h-4 w-4" /> {t("home.undo")}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => redo()} disabled={futureStates.length === 0}>
-              <Redo2 className="mr-2 h-4 w-4" /> Redo
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => redo()}
+              disabled={futureStates.length === 0}
+            >
+              <Redo2 className="mr-2 h-4 w-4" /> {t("home.redo")}
             </Button>
           </div>
         </div>

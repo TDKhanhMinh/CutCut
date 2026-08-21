@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 4,
+  "id": "unicode-fixture-project",
+  "name": "Bản thử nghiệm tiếng Việt — không dịch nội dung",
+  "media": [{
+    "id": "portrait-media",
+    "path": "portrait.mp4",
+    "metadata": { "durationSec": 1, "width": 720, "height": 1280, "fps": 30, "codec": "h264" }
+  }],
+  "transcript": {
+    "language": "vi",
+    "segments": [{ "id": "unicode-segment", "start": 0, "end": 0.8, "text": "Xin chào — đây là nội dung transcript không được dịch." }]
+  },
+  "editPlan": { "actions": [] },
+  "captionCues": [],
+  "createdAt": 0,
+  "updatedAt": 0
+}

@@ -25,7 +25,13 @@
         "enable": true,
         "scope": []
       },
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:1420 ws://localhost:1420; img-src 'self' asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:1420 ws://localhost:1420 https://mczkvdlclkzjcxdjlelj.supabase.co https://generativelanguage.googleapis.com; img-src 'self' asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "UNCONFIGURED_MINISIGN_PUBLIC_KEY",
+      "endpoints": ["https://releases.cutcut.app/{{target}}-{{arch}}.json"]
     }
   },
   "bundle": {
@@ -34,11 +40,7 @@
     "resources": {
       "binaries/whisper/*.dll": "."
     },
-    "externalBin": [
-      "ffmpeg",
-      "ffprobe",
-      "whisper"
-    ],
+    "externalBin": ["ffmpeg", "ffprobe", "whisper"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

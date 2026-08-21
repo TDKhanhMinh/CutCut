@@ -10,6 +10,9 @@ import { DEFAULT_SILENCE_CONFIG, type SilenceConfig } from "@/types/silence";
 import { analyzeNonSpeech } from "@/services/nonSpeechAnalysis";
 import { detectFillerCandidates } from "@/services/filler";
 import { validateEditPlan } from "@/services/project";
+import { analyzeAndMerge } from "@/services/ai";
+import { useAIConfigStore } from "@/stores/useAIConfigStore";
+import { useI18n } from "@/i18n";
 
 interface ReviewControlsProps {
   mediaId: string;
@@ -36,6 +39,7 @@ export function ReviewControls({
   onPreview,
   analysisCandidates = [],
 }: ReviewControlsProps) {
+  const { t } = useI18n();
   const persistedSuggestions = useMemo(
     () =>
       editPlan.actions
@@ -74,7 +78,9 @@ export function ReviewControls({
   );
   const [candidates, setCandidates] = useState<NonSpeechCandidate[]>(analysisCandidates);
   const [loading, setLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const aiMode = useAIConfigStore((state) => state.mode);
 
   const handleRunAnalysis = async () => {
     setLoading(true);
@@ -155,9 +161,25 @@ export function ReviewControls({
     onEditPlanChange({
       ...editPlan,
       actions: editPlan.actions.map((action) =>
-        action.id === id ? { ...action, enabled, isManualModified: true, updatedAt: Date.now() } : action,
+        action.id === id
+          ? { ...action, enabled, isManualModified: true, updatedAt: Date.now() }
+          : action,
       ),
     });
+  };
+
+  const handleRunAIAnalysis = async () => {
+    if (!transcript) return;
+    setAiLoading(true);
+    setError(null);
+    try {
+      const nextPlan = await analyzeAndMerge(mediaId, transcript, editPlan, media);
+      onEditPlanChange(nextPlan);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const handleRemoveAll = () => {
@@ -177,7 +199,9 @@ export function ReviewControls({
     onEditPlanChange({
       ...editPlan,
       actions: editPlan.actions.map((action) =>
-        suggestionIds.has(action.id) ? { ...action, enabled: true, isManualModified: true, updatedAt: Date.now() } : action,
+        suggestionIds.has(action.id)
+          ? { ...action, enabled: true, isManualModified: true, updatedAt: Date.now() }
+          : action,
       ),
     });
   };
@@ -185,19 +209,30 @@ export function ReviewControls({
   return (
     <div className="flex h-full flex-col rounded-lg border bg-card p-4">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xl font-bold">Review Suggestions</h2>
+        <h2 className="text-xl font-bold">{t("editor.reviewSuggestions")}</h2>
         <Button onClick={handleRunAnalysis} disabled={loading}>
-          {loading ? "Analyzing..." : "Generate Analysis"}
+          {loading ? t("editor.analyzing") : t("editor.generateAnalysis")}
+        </Button>
+        <Button
+          onClick={() => void handleRunAIAnalysis()}
+          disabled={aiLoading || !transcript}
+          variant="secondary"
+        >
+          {aiLoading
+            ? t("editor.aiAnalyzing")
+            : aiMode === "byok"
+              ? t("editor.analyzeByok")
+              : t("editor.analyzeHosted")}
         </Button>
       </div>
 
       {suggestions.length > 0 && (
         <div className="mb-4 flex gap-2">
           <Button variant="secondary" size="sm" onClick={handleRemoveAll}>
-            Keep All (No Cuts)
+            {t("editor.keepAll")}
           </Button>
           <Button variant="secondary" size="sm" onClick={handleKeepAll}>
-            Apply All Cuts
+            {t("editor.applyAll")}
           </Button>
         </div>
       )}
@@ -206,8 +241,8 @@ export function ReviewControls({
         {suggestions.length === 0 && !loading && (
           <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
             {candidates.length === 0 && !transcript
-              ? "Chưa có local analysis cho media này. Hãy chạy phân tích để tạo đề xuất."
-              : 'Nhấn "Generate Analysis" để tạo đề xuất.'}
+              ? t("editor.noAnalysis")
+              : t("editor.runAnalysisHint")}
           </div>
         )}
         {error && (

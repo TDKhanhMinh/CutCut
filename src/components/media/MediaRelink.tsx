@@ -8,6 +8,7 @@ import {
   type MediaCompatibilityResult,
 } from "@/services/media";
 import type { MediaSourceMetadata } from "@/types/media";
+import { useI18n } from "@/i18n";
 
 interface PendingRelink {
   path: string;
@@ -21,6 +22,7 @@ interface MediaRelinkProps {
 }
 
 export function MediaRelink({ mediaId, oldPath, oldMetadata }: MediaRelinkProps) {
+  const { t } = useI18n();
   const relinkMedia = useProjectStore((state) => state.relinkMedia);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,24 +89,19 @@ export function MediaRelink({ mediaId, oldPath, oldMetadata }: MediaRelinkProps)
         <AlertTriangle size={24} />
       </div>
 
-      <h2 className="mb-2 text-xl font-bold">Media File Missing</h2>
+      <h2 className="mb-2 text-xl font-bold">{t("media.missingTitle")}</h2>
 
-      <p className="mb-2 text-sm text-muted-foreground">
-        We can't find the source media for this project at its original location:
-      </p>
+      <p className="mb-2 text-sm text-muted-foreground">{t("media.missingDescription")}</p>
 
       <div className="mb-6 w-full break-all rounded bg-background p-2 text-left font-mono text-xs text-muted-foreground">
         {oldPath}
       </div>
 
-      <p className="mb-6 text-sm">
-        Your project edits are safe, but you need to relink the media file to continue editing or
-        exporting.
-      </p>
+      <p className="mb-6 text-sm">{t("media.editsSafe")}</p>
 
       {error && (
         <div className="mb-4 w-full rounded border border-destructive bg-destructive/20 p-3 text-left text-sm text-destructive">
-          <strong>Error:</strong> {error}
+          <strong>{t("common.error")}:</strong> {error}
         </div>
       )}
 
@@ -114,31 +111,28 @@ export function MediaRelink({ mediaId, oldPath, oldMetadata }: MediaRelinkProps)
           role="alert"
         >
           <p className="mb-2 font-semibold text-yellow-700 dark:text-yellow-300">
-            Media thay thế không hoàn toàn tương thích
+            {t("media.relinkWarning")}
           </p>
           <ul className="mb-3 list-inside list-disc space-y-1 text-muted-foreground">
             {compatibility.warnings.map((warning) => (
               <li key={warning.code}>{warning.message}</li>
             ))}
           </ul>
-          <p className="mb-3 text-xs text-muted-foreground">
-            Transcript và Edit Plan vẫn giữ timestamp của source cũ. Chỉ tiếp tục nếu bạn xác nhận
-            timeline có thể thay đổi.
-          </p>
+          <p className="mb-3 text-xs text-muted-foreground">{t("media.relinkWarningDetail")}</p>
           <div className="flex flex-wrap gap-2">
             <button
               className="rounded-md bg-yellow-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-yellow-700"
               onClick={confirmRelink}
               type="button"
             >
-              Relink với cảnh báo
+              {t("media.relinkWithWarning")}
             </button>
             <button
               className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
               onClick={discardPendingRelink}
               type="button"
             >
-              Chọn file khác
+              {t("media.chooseAnother")}
             </button>
           </div>
         </div>
@@ -149,7 +143,11 @@ export function MediaRelink({ mediaId, oldPath, oldMetadata }: MediaRelinkProps)
         onClick={handleRelink}
         disabled={loading}
       >
-        {loading ? "Relinking..." : pendingRelink ? "Chọn file khác" : "Relink File"}
+        {loading
+          ? t("media.relinking")
+          : pendingRelink
+            ? t("media.chooseAnother")
+            : t("media.relink")}
       </button>
     </div>
   );

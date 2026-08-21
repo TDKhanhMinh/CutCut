@@ -20,6 +20,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             greet,
             commands::cache::get_cache_usage,
@@ -66,10 +68,16 @@ pub fn run() {
             commands::auth::set_secure_token,
             commands::auth::get_secure_token,
             commands::auth::delete_secure_token,
+            commands::ai::get_gemini_key_status,
+            commands::ai::set_gemini_api_key,
+            commands::ai::delete_gemini_api_key,
+            commands::ai::test_gemini_key,
+            commands::ai::call_gemini_direct,
             commands::device::get_or_create_installation_id,
         ])
         .setup(|app| {
             let _ = crate::services::audio_extraction_service::AudioExtractionService::cleanup_stale_audio(app.handle());
+            let _ = crate::services::crash_reporter::install_panic_hook(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!())

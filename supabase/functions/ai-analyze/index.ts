@@ -231,10 +231,11 @@ Deno.serve(async (req) => {
     try {
       try {
         providerResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            // Keep the provider secret out of URL/query logs and referrers.
+            headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
             signal: controller.signal,
             body: JSON.stringify({
               system_instruction: { parts: [{ text: SEMANTIC_SYSTEM_PROMPT }] },

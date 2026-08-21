@@ -74,21 +74,32 @@ export const useProjectStore = create<ProjectState>()(
         );
         if (!currentSegment || !applyTranscriptTextEdit(currentSegment, text).changed) return;
 
-        get().updateProject((draft) => {
-          if (!draft.transcript) return;
-          const index = draft.transcript.segments.findIndex((segment) => segment.id === segmentId);
-          if (index === -1) return;
-          const result = applyTranscriptTextEdit(draft.transcript.segments[index], text);
-          if (!result.changed) return;
-          draft.transcript = {
-            ...draft.transcript,
-            segments: draft.transcript.segments.map((segment, segmentIndex) =>
-              segmentIndex === index ? result.segment : segment,
-            ),
-          };
-          draft.artifacts = markTranscriptDependentArtifactsStale(draft.artifacts);
-          draft.updatedAt = Date.now();
-        });
+        // Transcript edits have an explicit revert action. Do not snapshot the
+        // full transcript for every keystroke; zundo history is reserved for
+        // project/edit-plan changes to keep long transcripts O(1) per edit.
+        const temporal = useProjectStore.temporal.getState();
+        temporal.pause();
+        try {
+          get().updateProject((draft) => {
+            if (!draft.transcript) return;
+            const index = draft.transcript.segments.findIndex(
+              (segment) => segment.id === segmentId,
+            );
+            if (index === -1) return;
+            const result = applyTranscriptTextEdit(draft.transcript.segments[index], text);
+            if (!result.changed) return;
+            draft.transcript = {
+              ...draft.transcript,
+              segments: draft.transcript.segments.map((segment, segmentIndex) =>
+                segmentIndex === index ? result.segment : segment,
+              ),
+            };
+            draft.artifacts = markTranscriptDependentArtifactsStale(draft.artifacts);
+            draft.updatedAt = Date.now();
+          });
+        } finally {
+          temporal.resume();
+        }
       },
 
       revertTranscriptSegmentText: (segmentId) => {
@@ -97,21 +108,29 @@ export const useProjectStore = create<ProjectState>()(
         );
         if (!currentSegment || currentSegment.originalText === undefined) return;
 
-        get().updateProject((draft) => {
-          if (!draft.transcript) return;
-          const index = draft.transcript.segments.findIndex((segment) => segment.id === segmentId);
-          if (index === -1) return;
-          const segment = draft.transcript.segments[index];
-          const reverted = revertTranscriptTextEdit(segment);
-          if (reverted === segment) return;
-          draft.transcript = {
-            ...draft.transcript,
-            segments: draft.transcript.segments.map((candidate, segmentIndex) =>
-              segmentIndex === index ? reverted : candidate,
-            ),
-          };
-          draft.updatedAt = Date.now();
-        });
+        const temporal = useProjectStore.temporal.getState();
+        temporal.pause();
+        try {
+          get().updateProject((draft) => {
+            if (!draft.transcript) return;
+            const index = draft.transcript.segments.findIndex(
+              (segment) => segment.id === segmentId,
+            );
+            if (index === -1) return;
+            const segment = draft.transcript.segments[index];
+            const reverted = revertTranscriptTextEdit(segment);
+            if (reverted === segment) return;
+            draft.transcript = {
+              ...draft.transcript,
+              segments: draft.transcript.segments.map((candidate, segmentIndex) =>
+                segmentIndex === index ? reverted : candidate,
+              ),
+            };
+            draft.updatedAt = Date.now();
+          });
+        } finally {
+          temporal.resume();
+        }
       },
 
       setSaveState: (saveState) => set({ saveState }),
@@ -125,7 +144,10 @@ export const useProjectStore = create<ProjectState>()(
           if (get().revision === revision) set({ saveState: "saved", isDirty: false });
         } catch (error) {
           console.error("Failed to save project:", error);
-          set({ saveState: "error", lastSaveError: error instanceof Error ? error.message : String(error) });
+          set({
+            saveState: "error",
+            lastSaveError: error instanceof Error ? error.message : String(error),
+          });
         }
       },
 
@@ -135,10 +157,14 @@ export const useProjectStore = create<ProjectState>()(
         set({ saveState: "saving", lastSaveError: null });
         try {
           await saveProjectToDisk(path, activeProject);
-          if (get().revision === revision) set({ projectPath: path, saveState: "saved", isDirty: false });
+          if (get().revision === revision)
+            set({ projectPath: path, saveState: "saved", isDirty: false });
         } catch (error) {
           console.error("Failed to save project as:", error);
-          set({ saveState: "error", lastSaveError: error instanceof Error ? error.message : String(error) });
+          set({
+            saveState: "error",
+            lastSaveError: error instanceof Error ? error.message : String(error),
+          });
         }
       },
 

@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Transcript } from "@/types/transcript";
 import { TranscriptSegment } from "./TranscriptSegment";
+import { formatNumber, useI18n } from "@/i18n";
 
 interface TranscriptPanelProps {
   transcript: Transcript | null;
@@ -26,6 +27,7 @@ export const TranscriptPanel = ({
   onSegmentRevert,
   autoScroll = true,
 }: TranscriptPanelProps) => {
+  const { locale, t } = useI18n();
   const parentRef = useRef<HTMLDivElement>(null);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(autoScroll);
 
@@ -65,8 +67,8 @@ export const TranscriptPanel = ({
     return (
       <div className="flex h-full items-center justify-center border-l bg-muted/20 p-8 text-center text-muted-foreground">
         <div className="flex flex-col items-center gap-2">
-          <p className="text-sm">No transcript available.</p>
-          <p className="text-xs">Run AI Transcription to generate segments.</p>
+          <p className="text-sm">{t("editor.noTranscript")}</p>
+          <p className="text-xs">{t("editor.runTranscription")}</p>
         </div>
       </div>
     );
@@ -75,8 +77,10 @@ export const TranscriptPanel = ({
   return (
     <div className="relative flex h-full w-full max-w-sm shrink-0 flex-col border-l bg-background shadow-sm">
       <div className="flex shrink-0 items-center justify-between border-b p-4">
-        <h3 className="text-sm font-semibold">Transcript</h3>
-        <span className="text-xs text-muted-foreground">{segments.length} segments</span>
+        <h3 className="text-sm font-semibold">{t("editor.transcript")}</h3>
+        <span className="text-xs text-muted-foreground">
+          {formatNumber(segments.length, locale)} segments
+        </span>
       </div>
 
       {!isAutoScrollEnabled && activeSegmentId && (
@@ -85,7 +89,7 @@ export const TranscriptPanel = ({
             onClick={() => setIsAutoScrollEnabled(true)}
             className="cursor-pointer rounded-full bg-primary/90 px-3 py-1.5 text-xs text-primary-foreground shadow-md transition-colors hover:bg-primary"
           >
-            Resume Auto-scroll
+            {t("editor.resumeAutoScroll")}
           </button>
         </div>
       )}

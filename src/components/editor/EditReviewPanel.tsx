@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import { useEntitlementStore } from "@/stores/useEntitlementStore";
 import { AuthDialog } from "./AuthDialog";
 import { ActionCard } from "./ActionCard";
+import { useI18n } from "@/i18n";
 
 interface EditReviewPanelProps {
   mediaId: string;
@@ -15,6 +16,7 @@ interface EditReviewPanelProps {
 type FilterSource = "all" | "local" | "ai" | "user";
 
 export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
+  const { t } = useI18n();
   const { activeProject, updateProject } = useProjectStore();
   const { session } = useAuthStore();
   const { hasCapability } = useEntitlementStore();
@@ -25,9 +27,10 @@ export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
 
   const displayActions = useMemo(() => {
     const allActions = actions ?? [];
-    const filtered = filterSource === "all"
-      ? allActions
-      : allActions.filter((action) => action.source === filterSource);
+    const filtered =
+      filterSource === "all"
+        ? allActions
+        : allActions.filter((action) => action.source === filterSource);
     return [...filtered].sort((a, b) => a.startMs - b.startMs);
   }, [actions, filterSource]);
 
@@ -36,7 +39,7 @@ export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
       if (!session) {
         setAuthDialogOpen(true);
       } else {
-        window.alert("Your current plan does not include Cloud AI features. Please upgrade.");
+        window.alert(t("errors.cloudPlan"));
       }
       return;
     }
@@ -117,19 +120,27 @@ export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
     <div className="flex h-full flex-col rounded-lg border bg-card p-4">
       <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xl font-bold">Review Suggestions</h2>
+        <h2 className="text-xl font-bold">{t("editor.reviewSuggestions")}</h2>
         <Button onClick={handleRunAnalysis} disabled={loading}>
-          {loading ? "Analyzing..." : "Generate Analysis"}
+          {loading ? t("editor.analyzing") : t("editor.generateAnalysis")}
         </Button>
       </div>
       {(actions?.length ?? 0) > 0 && (
         <div className="mb-4 flex flex-col gap-2">
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setEnabledFor(visibleCutIds, false)}>
-              Remove All Cuts
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setEnabledFor(visibleCutIds, false)}
+            >
+              {t("editor.removeAllCuts")}
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setEnabledFor(visibleCutIds, true)}>
-              Keep All (No Cuts)
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setEnabledFor(visibleCutIds, true)}
+            >
+              {t("editor.keepAll")}
             </Button>
           </div>
           <div className="flex gap-1 rounded-md bg-secondary/50 p-1">
@@ -140,7 +151,13 @@ export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
                 size="sm"
                 onClick={() => setFilterSource(source)}
               >
-                {source === "all" ? "All" : source === "ai" ? "AI Only" : source[0].toUpperCase() + source.slice(1)}
+                {source === "all"
+                  ? t("editor.filterAll")
+                  : source === "local"
+                    ? t("editor.filterLocal")
+                    : source === "ai"
+                      ? t("editor.filterAi")
+                      : t("editor.filterUser")}
               </Button>
             ))}
           </div>
@@ -149,9 +166,7 @@ export function EditReviewPanel({ mediaId, onPreview }: EditReviewPanelProps) {
       <ScrollArea className="flex-1 pr-4">
         {displayActions.length === 0 && !loading && (
           <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-            {(actions?.length ?? 0) === 0
-              ? "Click 'Generate Analysis' to find removable segments."
-              : "No actions match the selected filter."}
+            {(actions?.length ?? 0) === 0 ? t("editor.generateHint") : t("editor.noFilterActions")}
           </div>
         )}
         {displayActions.map((action) => (

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 4,
+  "id": "fixture-project",
+  "name": "E2E fixture",
+  "media": [
+    {
+      "id": "fixture-media",
+      "path": "sample.mp4",
+      "metadata": {
+        "durationSec": 1,
+        "width": 640,
+        "height": 360,
+        "fps": 30,
+        "codec": "h264",
+        "audio": { "sampleRate": 48000, "channels": 1 }
+      }
+    }
+  ],
+  "transcript": {
+    "language": "vi",
+    "segments": [
+      { "id": "segment-1", "start": 0, "end": 0.8, "text": "Xin chào" }
+    ]
+  },
+  "editPlan": { "actions": [] },
+  "captionCues": [],
+  "createdAt": 0,
+  "updatedAt": 0
+}

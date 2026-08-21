@@ -13,8 +13,10 @@ import {
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import type { ResourceItem, ResourceState } from "@/types/resource";
+import { formatBytes, useI18n } from "@/i18n";
 
 export function ModelManager() {
+  const { locale, t } = useI18n();
   const [models, setModels] = useState<ResourceItem[]>([]);
   const [states, setStates] = useState<Record<string, ResourceState>>({});
   const [activeModel, setActiveModel] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export function ModelManager() {
         setStates((previous) => ({
           ...previous,
           [event.payload.id]: {
-            failed: { reason: event.payload.reason ?? "Tải resource thất bại." },
+            failed: { reason: event.payload.reason ?? t("settings.downloadFailed") },
           },
         }));
         return;
@@ -78,7 +80,7 @@ export function ModelManager() {
       unlistenProgress.then((dispose) => dispose());
       unlistenFinished.then((dispose) => dispose());
     };
-  }, []);
+  }, [t]);
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
@@ -123,24 +125,20 @@ export function ModelManager() {
     }
   };
 
-  const formatSize = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger render={<Button variant="outline" size="sm" className="gap-2" />}>
         <BrainCircuit className="h-4 w-4 text-primary" />
-        <span className="hidden sm:inline">AI Models</span>
+        <span className="hidden sm:inline">{t("settings.aiModels")}</span>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Quản lý Speech Models</DialogTitle>
-          <DialogDescription>
-            Model chỉ được chọn sau khi checksum và compatibility với runtime CPU pass.
-          </DialogDescription>
+          <DialogTitle>{t("settings.speechModels")}</DialogTitle>
+          <DialogDescription>{t("settings.modelCompatibility")}</DialogDescription>
         </DialogHeader>
 
         <p className="text-xs text-muted-foreground">
-          Đang dùng {formatSize(diskUsage)} trong app data directory.
+          {t("settings.diskUsage", { size: formatBytes(diskUsage, locale) })}
         </p>
         <div className="mt-4 flex flex-col gap-4">
           {models.map((model) => {
@@ -167,7 +165,7 @@ export function ModelManager() {
                       {isActive && <CheckCircle2 className="h-4 w-4 text-primary" />}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {formatSize(model.sizeBytes)} · {model.id}
+                      {formatBytes(model.sizeBytes, locale)} · {model.id}
                     </span>
                   </div>
 
@@ -179,7 +177,9 @@ export function ModelManager() {
                         onClick={() => void handleDownload(model.id)}
                       >
                         <Download className="h-4 w-4" />
-                        {isCorrupted || isFailed ? "Tải lại" : "Tải về"}
+                        {isCorrupted || isFailed
+                          ? t("settings.retryDownload")
+                          : t("settings.download")}
                       </Button>
                     )}
                     {isDownloading && (
@@ -194,7 +194,7 @@ export function ModelManager() {
                     {isInstalled && !isActive && (
                       <Button size="sm" onClick={() => void handleSetActive(model.id)}>
                         <PlayCircle className="h-4 w-4" />
-                        Dùng
+                        {t("settings.useModel")}
                       </Button>
                     )}
                     {isInstalled && !isActive && (
@@ -213,7 +213,7 @@ export function ModelManager() {
                 {isDownloading && (
                   <div className="flex flex-col gap-1.5">
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Đang tải...</span>
+                      <span>{t("settings.downloading")}</span>
                       <span>{progress.toFixed(0)}%</span>
                     </div>
                     <Progress value={progress} className="h-1.5" />
@@ -221,17 +221,18 @@ export function ModelManager() {
                 )}
                 {isIncompatible && (
                   <p className="text-xs text-amber-600">
-                    Không tương thích: {state.incompatible.reason}
+                    {t("settings.incompatible")} {state.incompatible.reason}
                   </p>
                 )}
                 {isCorrupted && (
                   <p className="text-xs text-destructive">
-                    Checksum/manifest lỗi: {state.corrupted.reason} Hãy tải lại model.
+                    {t("settings.checksumError")} {state.corrupted.reason}{" "}
+                    {t("settings.retryDownload")}.
                   </p>
                 )}
                 {isFailed && (
                   <p className="text-xs text-destructive">
-                    Tải model thất bại: {state.failed.reason}
+                    {t("settings.downloadFailed")} {state.failed.reason}
                   </p>
                 )}
               </div>

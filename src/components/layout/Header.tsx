@@ -3,10 +3,12 @@ import { useAppStore } from "../../store";
 import { Button } from "../ui/button";
 import { useTheme } from "../theme-context";
 import { ModelManager } from "../settings/ModelManager";
+import { useI18n } from "@/i18n";
 
 export function Header() {
   const toggleSidebar = useAppStore((state) => state.toggleSidebar);
   const { theme, setTheme } = useTheme();
+  const { t } = useI18n();
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background px-4">
@@ -33,9 +35,14 @@ export function Header() {
         >
           <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
           <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-          <span className="sr-only">Toggle theme</span>
+          <span className="sr-only">{t("nav.toggleTheme")}</span>
         </Button>
-        <Button variant="ghost" size="icon" className="text-muted-foreground">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground"
+          aria-label={t("nav.notifications")}
+        >
           <Bell className="h-5 w-5" />
         </Button>
         <div className="ml-2 h-8 w-8 rounded-full border border-primary/30 bg-primary/20" />

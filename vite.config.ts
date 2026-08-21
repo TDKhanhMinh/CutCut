@@ -13,6 +13,11 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // The workspace contains generated Playwright and Rust-doc HTML reports;
+  // they are not application entry points and must not be dependency-scanned.
+  optimizeDeps: {
+    entries: ["index.html"],
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

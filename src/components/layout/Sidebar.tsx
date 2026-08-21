@@ -6,8 +6,10 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { useEffect } from "react";
 import { Button } from "../ui/button";
 import { createProject, loadProjectFromDisk } from "@/services/project";
+import { useI18n } from "@/i18n";
 
 export function Sidebar() {
+  const { t } = useI18n();
   const sidebarOpen = useAppStore((state) => state.sidebarOpen);
   const location = useLocation();
   const {
@@ -85,13 +87,13 @@ export function Sidebar() {
       <nav className="flex w-full flex-1 flex-col gap-2 p-2 lg:p-4">
         <NavItem
           icon={<Home className="h-5 w-5" />}
-          label="Home"
+          label={t("nav.home")}
           path="/"
           active={location.pathname === "/"}
         />
         <NavItem
           icon={<Layers className="h-5 w-5" />}
-          label="Editor"
+          label={t("nav.editor")}
           path="/editor"
           active={location.pathname === "/editor"}
         />
@@ -104,7 +106,7 @@ export function Sidebar() {
           className="flex w-full items-center justify-center gap-3 p-3 text-muted-foreground lg:justify-start lg:px-4"
         >
           <FilePlus className="h-5 w-5" />
-          <span className="hidden text-sm font-medium lg:inline-block">New Project</span>
+          <span className="hidden text-sm font-medium lg:inline-block">{t("nav.newProject")}</span>
         </Button>
 
         <Button
@@ -113,7 +115,7 @@ export function Sidebar() {
           className="flex w-full items-center justify-center gap-3 p-3 text-muted-foreground lg:justify-start lg:px-4"
         >
           <FolderOpen className="h-5 w-5" />
-          <span className="hidden text-sm font-medium lg:inline-block">Open Project</span>
+          <span className="hidden text-sm font-medium lg:inline-block">{t("nav.openProject")}</span>
         </Button>
 
         {activeProject && (
@@ -124,7 +126,7 @@ export function Sidebar() {
               className="flex w-full items-center justify-center gap-3 p-3 text-muted-foreground lg:justify-start lg:px-4"
             >
               <Save className="h-5 w-5" />
-              <span className="hidden text-sm font-medium lg:inline-block">Save</span>
+              <span className="hidden text-sm font-medium lg:inline-block">{t("nav.save")}</span>
             </Button>
             <Button
               variant="ghost"
@@ -132,7 +134,7 @@ export function Sidebar() {
               className="flex w-full items-center justify-center gap-3 p-3 text-muted-foreground lg:justify-start lg:px-4"
             >
               <Save className="h-5 w-5" />
-              <span className="hidden text-sm font-medium lg:inline-block">Save As</span>
+              <span className="hidden text-sm font-medium lg:inline-block">{t("nav.saveAs")}</span>
             </Button>
           </>
         )}
@@ -140,15 +142,15 @@ export function Sidebar() {
 
       {activeProject && (
         <div className="w-full p-2 text-center text-xs font-medium text-muted-foreground lg:p-4 lg:text-left">
-          {saveState === "saving" && <span className="text-yellow-500">Saving...</span>}
-          {saveState === "saved" && <span className="text-green-500">All changes saved</span>}
+          {saveState === "saving" && <span className="text-yellow-500">{t("nav.saving")}</span>}
+          {saveState === "saved" && <span className="text-green-500">{t("nav.saved")}</span>}
           {saveState === "error" && (
             <span className="text-red-500" title={lastSaveError ?? undefined}>
-              Save failed!
+              {t("nav.saveFailed")}
             </span>
           )}
           {saveState === "idle" && isDirty && (
-            <span className="text-yellow-500">Unsaved changes</span>
+            <span className="text-yellow-500">{t("nav.unsaved")}</span>
           )}
         </div>
       )}
@@ -156,7 +158,7 @@ export function Sidebar() {
       <div className="w-full border-t border-border p-2 lg:p-4">
         <NavItem
           icon={<Settings className="h-5 w-5" />}
-          label="Settings"
+          label={t("common.settings")}
           path="/settings"
           active={location.pathname === "/settings"}
         />

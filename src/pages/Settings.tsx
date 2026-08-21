@@ -7,6 +7,11 @@ import {
   setRuntimePresetPreference,
 } from "@/services/runtime";
 import { useProjectStore } from "@/stores/useProjectStore";
+import { BYOKManager } from "@/components/settings/BYOKManager";
+import { LocaleSelector } from "@/components/settings/LocaleSelector";
+import { formatBytes, useI18n } from "@/i18n";
+import { UpdaterManager } from "@/components/settings/UpdaterManager";
+import { TelemetrySettings } from "@/components/settings/TelemetrySettings";
 import type {
   PresetResolution,
   PresetType,
@@ -14,14 +19,8 @@ import type {
   RuntimeProfile,
 } from "@/types/hardware";
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
 export function Settings() {
+  const { locale, t } = useI18n();
   const activeProject = useProjectStore((state) => state.activeProject);
   const projectPath = useProjectStore((state) => state.projectPath);
   const setProject = useProjectStore((state) => state.setProject);
@@ -107,7 +106,7 @@ export function Settings() {
       const result = await clearProjectCache(projectPath, activeProject);
       setProject(result.project, projectPath);
       setReclaimableBytes(0);
-      setMessage(`Đã giải phóng ${formatBytes(result.freedBytes)} cache có thể tạo lại.`);
+      setMessage(t("settings.cacheCleared", { bytes: formatBytes(result.freedBytes, locale) }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -145,21 +144,20 @@ export function Settings() {
 
   return (
     <div className="flex-1 p-8">
-      <h1 className="mb-4 text-2xl font-bold">Settings</h1>
+      <h1 className="mb-4 text-2xl font-bold">{t("common.settings")}</h1>
+
+      <LocaleSelector />
 
       <section className="max-w-xl rounded-lg border border-border bg-card p-5">
-        <h2 className="mb-2 text-lg font-semibold">Cache lifecycle</h2>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Chỉ cache do app tạo trong <code>.cutcut/artifacts</code> được dọn dẹp. Source media,
-          Project JSON và user-owned assets không nằm trong phạm vi thao tác này.
-        </p>
+        <h2 className="mb-2 text-lg font-semibold">{t("settings.cacheTitle")}</h2>
+        <p className="mb-4 text-sm text-muted-foreground">{t("settings.cacheDescription")}</p>
 
         {!activeProject || !projectPath ? (
-          <p className="text-sm text-muted-foreground">Mở một project để xem và dọn cache.</p>
+          <p className="text-sm text-muted-foreground">{t("settings.openProjectForCache")}</p>
         ) : (
           <div className="space-y-3">
             <p className="text-sm">
-              Có thể giải phóng: <strong>{formatBytes(reclaimableBytes)}</strong>
+              {t("settings.reclaimable")} <strong>{formatBytes(reclaimableBytes, locale)}</strong>
             </p>
             <button
               type="button"
@@ -167,7 +165,7 @@ export function Settings() {
               onClick={handleClearCache}
               disabled={loading || reclaimableBytes === 0}
             >
-              {loading ? "Đang dọn cache..." : "Xóa cache có thể tạo lại"}
+              {loading ? t("settings.clearingCache") : t("settings.clearCache")}
             </button>
           </div>
         )}
@@ -183,11 +181,8 @@ export function Settings() {
       <section className="mt-6 max-w-xl rounded-lg border border-border bg-card p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="mb-2 text-lg font-semibold">Runtime diagnostics</h2>
-            <p className="text-sm text-muted-foreground">
-              Capability được probe từ runtime Whisper đã bundle; GPU name không tự quảng cáo
-              backend.
-            </p>
+            <h2 className="mb-2 text-lg font-semibold">{t("settings.runtimeTitle")}</h2>
+            <p className="text-sm text-muted-foreground">{t("settings.runtimeDescription")}</p>
           </div>
           <button
             type="button"
@@ -195,39 +190,41 @@ export function Settings() {
             onClick={handleRefreshRuntime}
             disabled={runtimeLoading}
           >
-            {runtimeLoading ? "Đang kiểm tra..." : "Làm mới"}
+            {runtimeLoading ? t("settings.checkingRuntime") : t("settings.refreshRuntime")}
           </button>
         </div>
 
         {runtimeProfile ? (
           <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="text-muted-foreground">CPU</dt>
+            <dt className="text-muted-foreground">{t("settings.cpu")}</dt>
             <dd>{runtimeProfile.cpuName}</dd>
             <dt className="text-muted-foreground">RAM</dt>
-            <dd>{formatBytes(runtimeProfile.totalMemoryMb * 1024 * 1024)}</dd>
-            <dt className="text-muted-foreground">Whisper runtime</dt>
+            <dd>{formatBytes(runtimeProfile.totalMemoryMb * 1024 * 1024, locale)}</dd>
+            <dt className="text-muted-foreground">{t("settings.whisperRuntime")}</dt>
             <dd>
               {runtimeProfile.runtimeAvailable
-                ? (runtimeProfile.runtimeVersion ?? "Available")
-                : "Unavailable"}
+                ? (runtimeProfile.runtimeVersion ?? t("common.available"))
+                : t("common.unavailable")}
             </dd>
-            <dt className="text-muted-foreground">Backend</dt>
+            <dt className="text-muted-foreground">{t("settings.backend")}</dt>
             <dd>{runtimeProfile.supportedAcceleration}</dd>
-            <dt className="text-muted-foreground">Model tiers</dt>
+            <dt className="text-muted-foreground">{t("settings.modelTiers")}</dt>
             <dd>{runtimeProfile.recommendedModelIds.join(", ")}</dd>
-            <dt className="text-muted-foreground">GPU</dt>
+            <dt className="text-muted-foreground">{t("settings.gpu")}</dt>
             <dd>
               {runtimeProfile.gpuNames.length > 0
                 ? runtimeProfile.gpuNames.join(", ")
-                : "Không phát hiện"}
+                : t("settings.noGpu")}
             </dd>
           </dl>
         ) : (
-          <p className="mt-4 text-sm text-muted-foreground">Đang đọc capability runtime...</p>
+          <p className="mt-4 text-sm text-muted-foreground">{t("settings.readingRuntime")}</p>
         )}
 
         {runtimeProfile?.fallbackReason && (
-          <p className="mt-4 text-sm text-amber-600">Fallback: {runtimeProfile.fallbackReason}</p>
+          <p className="mt-4 text-sm text-amber-600">
+            {t("settings.fallback")} {runtimeProfile.fallbackReason}
+          </p>
         )}
         {runtimeError && (
           <p className="mt-4 text-sm text-destructive" role="alert">
@@ -237,11 +234,8 @@ export function Settings() {
       </section>
 
       <section className="mt-6 max-w-xl rounded-lg border border-border bg-card p-5">
-        <h2 className="mb-2 text-lg font-semibold">Speech preset</h2>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Chọn mục tiêu tốc độ/chất lượng; model chỉ được dùng khi đã cài và tương thích với runtime
-          hiện tại.
-        </p>
+        <h2 className="mb-2 text-lg font-semibold">{t("settings.speechTitle")}</h2>
+        <p className="mb-4 text-sm text-muted-foreground">{t("settings.speechDescription")}</p>
         <div className="flex flex-wrap gap-2">
           {(["fast", "balanced", "accurate"] as PresetType[]).map((preset) => (
             <button
@@ -259,9 +253,7 @@ export function Settings() {
         </div>
 
         <label className="mt-4 block text-sm">
-          <span className="mb-1 block text-muted-foreground">
-            Advanced model override (optional)
-          </span>
+          <span className="mb-1 block text-muted-foreground">{t("settings.advancedOverride")}</span>
           <input
             value={presetOverride}
             onChange={(event) => setPresetOverride(event.target.value)}
@@ -275,23 +267,23 @@ export function Settings() {
           onClick={() => void handlePresetChange(presetPreference?.preset ?? "balanced")}
           disabled={presetLoading || !presetPreference}
         >
-          {presetLoading ? "Đang áp dụng..." : "Lưu preset"}
+          {presetLoading ? t("settings.savingPreset") : t("settings.savePreset")}
         </button>
 
         {presetResolution && (
           <div className="mt-4 rounded-md bg-muted/40 p-3 text-sm">
             <p>
-              Recommendation: <strong>{presetResolution.targetModelId}</strong> · backend{" "}
-              <strong>{presetResolution.targetBackend}</strong>
+              {t("settings.recommendation")} <strong>{presetResolution.targetModelId}</strong> ·
+              backend <strong>{presetResolution.targetBackend}</strong>
             </p>
             <p className="mt-1 text-muted-foreground">{presetResolution.tradeoffDescription}</p>
             {!presetResolution.isModelInstalled && (
-              <p className="mt-2 text-amber-600">
-                Model chưa sẵn sàng — mở AI Models để tải model hoặc chọn fallback.
-              </p>
+              <p className="mt-2 text-amber-600">{t("settings.modelNotReady")}</p>
             )}
             {presetResolution.fallbackReason && (
-              <p className="mt-2 text-amber-600">Fallback: {presetResolution.fallbackReason}</p>
+              <p className="mt-2 text-amber-600">
+                {t("settings.fallback")} {presetResolution.fallbackReason}
+              </p>
             )}
           </div>
         )}
@@ -301,6 +293,10 @@ export function Settings() {
           </p>
         )}
       </section>
+
+      <BYOKManager />
+      <UpdaterManager />
+      <TelemetrySettings />
     </div>
   );
 }

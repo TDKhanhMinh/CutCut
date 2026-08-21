@@ -4,6 +4,7 @@ import type { EditPlan, CaptionCue, CaptionStyle } from "@/types/project";
 import { useCutPreview } from "@/hooks/useCutPreview";
 import { Switch } from "@/components/ui/switch";
 import { CaptionOverlay } from "./CaptionOverlay";
+import { useI18n } from "@/i18n";
 
 export type VideoSeekStatus = "applied" | "queued" | "rejected";
 
@@ -44,6 +45,7 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(funct
   },
   ref,
 ) {
+  const { t } = useI18n();
   const videoRef = useRef<HTMLVideoElement>(null);
   const pendingSeekMsRef = useRef<number | null>(null);
   const rangeRef = useRef<{ stopMs: number } | null>(null);
@@ -151,30 +153,47 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(funct
     }
   };
 
-  const hasCuts = Boolean(editPlan?.actions.some((action) => action.enabled && action.type === "cut"));
+  const hasCuts = Boolean(
+    editPlan?.actions.some((action) => action.enabled && action.type === "cut"),
+  );
   const hasCaptions = Boolean(captionCues && captionCues.length > 0);
 
   return (
     <div className="m-4 max-w-xl rounded-lg border bg-card p-4 text-card-foreground shadow-sm">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-lg font-bold">Video Preview</h3>
+        <h3 className="text-lg font-bold">{t("editor.videoPreview")}</h3>
         <div className="flex items-center gap-4">
           {hasCaptions && (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Captions</span>
-              <Switch id="captions-toggle" checked={showCaptions} onCheckedChange={setShowCaptions} aria-label="Toggle captions" />
+              <span className="text-sm text-muted-foreground">{t("editor.captions")}</span>
+              <Switch
+                id="captions-toggle"
+                checked={showCaptions}
+                onCheckedChange={setShowCaptions}
+                aria-label={t("editor.toggleCaptions")}
+              />
             </div>
           )}
           {hasCuts && (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Preview Cuts</span>
-              <Switch id="cut-preview-toggle" checked={cutPreviewActive} onCheckedChange={setCutPreviewActive} aria-label="Toggle cut-preview mode" />
+              <span className="text-sm text-muted-foreground">{t("editor.previewCuts")}</span>
+              <Switch
+                id="cut-preview-toggle"
+                checked={cutPreviewActive}
+                onCheckedChange={setCutPreviewActive}
+                aria-label={t("editor.cutPreviewToggle")}
+              />
             </div>
           )}
         </div>
       </div>
-      {cutPreviewActive && <p className="mb-2 text-xs italic text-muted-foreground">Source-time preview — enabled cuts will be skipped.</p>}
-      <div className="@container relative w-full overflow-hidden rounded bg-black" style={{ maxHeight: "400px" }}>
+      {cutPreviewActive && (
+        <p className="mb-2 text-xs italic text-muted-foreground">{t("editor.sourcePreview")}</p>
+      )}
+      <div
+        className="@container relative w-full overflow-hidden rounded bg-black"
+        style={{ maxHeight: "400px" }}
+      >
         <video
           ref={videoRef}
           src={assetUrl}
@@ -193,7 +212,13 @@ export const VideoPreview = forwardRef<VideoPreviewRef, VideoPreviewProps>(funct
           }}
         />
         {showCaptions && hasCaptions && (
-          <CaptionOverlay videoRef={videoRef} cues={captionCues ?? []} styleModel={captionStyle ?? null} editPlan={editPlan} sourceMediaId={sourceMediaId} />
+          <CaptionOverlay
+            videoRef={videoRef}
+            cues={captionCues ?? []}
+            styleModel={captionStyle ?? null}
+            editPlan={editPlan}
+            sourceMediaId={sourceMediaId}
+          />
         )}
       </div>
     </div>

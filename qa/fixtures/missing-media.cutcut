@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 4,
+  "id": "missing-media-fixture-project",
+  "name": "Missing media recovery fixture",
+  "media": [{
+    "id": "missing-media",
+    "path": "does-not-exist.mp4",
+    "metadata": { "durationSec": 1, "width": 640, "height": 360, "fps": 30, "codec": "h264" }
+  }],
+  "transcript": null,
+  "editPlan": { "actions": [] },
+  "captionCues": [],
+  "createdAt": 0,
+  "updatedAt": 0
+}
