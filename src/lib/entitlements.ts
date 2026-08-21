@@ -1,4 +1,4 @@
-export type EntitlementPlan = 'FREE' | 'PRO' | 'ENTERPRISE';
+export type EntitlementPlan = "FREE" | "PRO" | "ENTERPRISE";
 
 export interface EntitlementRecord {
   plan_id?: unknown;
@@ -20,21 +20,26 @@ export interface NormalizedEntitlement {
 export function normalizeEntitlement(
   record: EntitlementRecord | null | undefined,
 ): NormalizedEntitlement {
-  const rawPlan = typeof record?.plan_id === 'string' ? record.plan_id.toUpperCase() : 'FREE';
-  const plan: EntitlementPlan =
-    rawPlan === 'PRO' || rawPlan === 'ENTERPRISE' ? rawPlan : 'FREE';
+  const rawPlan = typeof record?.plan_id === "string" ? record.plan_id.toUpperCase() : "FREE";
+  const requestedPlan: EntitlementPlan =
+    rawPlan === "PRO" || rawPlan === "ENTERPRISE" ? rawPlan : "FREE";
+
+  const expiresAt = typeof record?.expires_at === "string" ? record.expires_at : null;
+  const active =
+    !expiresAt || (Number.isFinite(Date.parse(expiresAt)) && Date.parse(expiresAt) > Date.now());
+  const plan: EntitlementPlan = active ? requestedPlan : "FREE";
 
   const capabilities = new Set<string>();
   const features = record?.features;
   if (Array.isArray(features)) {
     for (const feature of features) {
-      if (typeof feature === 'string' && feature.length > 0) capabilities.add(feature);
+      if (typeof feature === "string" && feature.length > 0) capabilities.add(feature);
     }
-  } else if (features && typeof features === 'object') {
+  } else if (features && typeof features === "object") {
     const rawCapabilities = (features as { capabilities?: unknown }).capabilities;
     if (Array.isArray(rawCapabilities)) {
       for (const feature of rawCapabilities) {
-        if (typeof feature === 'string' && feature.length > 0) capabilities.add(feature);
+        if (typeof feature === "string" && feature.length > 0) capabilities.add(feature);
       }
     } else {
       for (const [feature, enabled] of Object.entries(features)) {
@@ -43,6 +48,5 @@ export function normalizeEntitlement(
     }
   }
 
-  const expiresAt = typeof record?.expires_at === 'string' ? record.expires_at : null;
-  return { plan, capabilities: [...capabilities], expiresAt };
+  return { plan, capabilities: active ? [...capabilities] : [], expiresAt };
 }

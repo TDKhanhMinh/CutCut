@@ -190,6 +190,14 @@ const resources: Record<Locale, Record<string, TranslationValue>> = {
     "settings.updateAvailable": "Update available: {version}",
     "settings.updaterUnconfigured":
       "Updater is disabled until the release signing key and trusted endpoint are configured.",
+    "settings.devicesTitle": "Activated devices",
+    "settings.devicesDescription":
+      "Manage devices linked to this account. Device IDs are random installation hashes.",
+    "settings.noDevices": "No activated devices found.",
+    "settings.deactivateDevice": "Deactivate",
+    "settings.confirmDeactivateDevice":
+      "Deactivate this device? Hosted AI will require activation again on this device.",
+    "settings.devicesUnavailable": "Device management is temporarily unavailable.",
     "settings.updateError": "Update check failed. The current app remains usable.",
     "settings.aiModels": "AI Models",
     "settings.speechModels": "Speech model manager",
@@ -417,6 +425,14 @@ const resources: Record<Locale, Record<string, TranslationValue>> = {
     "settings.updateAvailable": "Có bản cập nhật: {version}",
     "settings.updaterUnconfigured":
       "Updater bị tắt cho tới khi cấu hình signing key và trusted endpoint.",
+    "settings.devicesTitle": "Thiết bị đã kích hoạt",
+    "settings.devicesDescription":
+      "Quản lý thiết bị gắn với tài khoản. Device ID là hash ngẫu nhiên của installation.",
+    "settings.noDevices": "Chưa có thiết bị được kích hoạt.",
+    "settings.deactivateDevice": "Hủy kích hoạt",
+    "settings.confirmDeactivateDevice":
+      "Hủy kích hoạt thiết bị này? Hosted AI sẽ cần kích hoạt lại trên thiết bị.",
+    "settings.devicesUnavailable": "Quản lý thiết bị tạm thời không khả dụng.",
     "settings.updateError": "Kiểm tra cập nhật thất bại. App hiện tại vẫn dùng được.",
     "settings.aiModels": "AI Models",
     "settings.speechModels": "Quản lý Speech Models",

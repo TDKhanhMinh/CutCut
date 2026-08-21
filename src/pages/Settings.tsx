@@ -12,6 +12,7 @@ import { LocaleSelector } from "@/components/settings/LocaleSelector";
 import { formatBytes, useI18n } from "@/i18n";
 import { UpdaterManager } from "@/components/settings/UpdaterManager";
 import { TelemetrySettings } from "@/components/settings/TelemetrySettings";
+import { DeviceManager } from "@/components/settings/DeviceManager";
 import type {
   PresetResolution,
   PresetType,
@@ -295,6 +296,7 @@ export function Settings() {
       </section>
 
       <BYOKManager />
+      <DeviceManager />
       <UpdaterManager />
       <TelemetrySettings />
     </div>

@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { authService } from "@/services/auth";
+import { useAuthStore } from "@/stores/useAuthStore";
+import { useEntitlementStore } from "@/stores/useEntitlementStore";
 import { useAIConfigStore } from "@/stores/useAIConfigStore";
 import type { AIAnalysisRequest, AIAnalysisResponse } from "@/types/ai";
 import type { EditAction, EditPlan, MediaSource, Transcript } from "@/types/project";
@@ -38,6 +40,11 @@ export async function analyzeTranscript(
   if (useAIConfigStore.getState().mode === "byok") {
     return invoke<AIAnalysisResponse>("call_gemini_direct", { request });
   }
+  const user = useAuthStore.getState().user;
+  if (!user) throw new Error("auth_required");
+  // Refresh entitlement at the cloud request boundary; the Edge Function still
+  // performs the authoritative quota/entitlement check.
+  await useEntitlementStore.getState().refreshIfStale(user.id);
   const { data, error } = await authService.invokeFunction<AIAnalysisResponse>(
     "ai-analyze",
     request as unknown as Record<string, unknown>,
