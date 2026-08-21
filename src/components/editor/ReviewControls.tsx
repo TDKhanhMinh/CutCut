@@ -82,7 +82,10 @@ export function ReviewControls({
     try {
       const fusionPromise = analyzeNonSpeech({ sourcePath, durationMs, silenceConfig });
       const fillerPromise = transcript
-        ? detectFillerCandidates(mediaId, transcript, durationMs, 40)
+        ? detectFillerCandidates(mediaId, transcript, durationMs, 40).catch((fillerError) => {
+            console.error("Filler analysis unavailable:", fillerError);
+            return null;
+          })
         : Promise.resolve(null);
       const [fusion, filler] = await Promise.all([fusionPromise, fillerPromise]);
       setCandidates(fusion.candidates);
