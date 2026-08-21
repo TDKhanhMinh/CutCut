@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "generatedFor": "task-46",
+  "cases": [
+    {
+      "id": "local-16-9-happy",
+      "media": "sample.mp4",
+      "project": "Untitled.cutcut",
+      "aspectRatio": "16:9",
+      "audio": true,
+      "unicode": true,
+      "stages": ["import", "probe", "save-reopen", "transcript", "edit-plan", "caption", "export"],
+      "expected": "pass"
+    },
+    {
+      "id": "local-9-16-unicode",
+      "media": "portrait.mp4",
+      "project": "Unicode-Việt.cutcut",
+      "aspectRatio": "9:16",
+      "audio": false,
+      "unicode": true,
+      "stages": ["import", "probe", "save-reopen", "caption", "export"],
+      "expected": "pass-without-audio"
+    },
+    {
+      "id": "negative-no-audio",
+      "media": "no-audio.mp4",
+      "project": null,
+      "aspectRatio": "16:9",
+      "audio": false,
+      "unicode": false,
+      "stages": ["import", "probe", "recoverable-error"],
+      "expected": "recoverable-error"
+    },
+    {
+      "id": "negative-corrupt-media",
+      "media": "corrupted-container.mp4",
+      "project": null,
+      "aspectRatio": null,
+      "audio": null,
+      "unicode": false,
+      "stages": ["import", "probe", "recoverable-error"],
+      "expected": "recoverable-error"
+    },
+    {
+      "id": "relink-missing-media",
+      "media": "sample.mp4",
+      "project": "missing-media.cutcut",
+      "aspectRatio": "16:9",
+      "audio": true,
+      "unicode": false,
+      "stages": ["open", "missing-media", "relink", "probe", "save-reopen"],
+      "expected": "recoverable-error"
+    }
+  ]
+}

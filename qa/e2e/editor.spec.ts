@@ -60,6 +60,7 @@ test('ships the valid, corrupted and portable project fixtures locally', async (
   const fixtureRoot = resolve('qa/fixtures');
   const sample = resolve(fixtureRoot, 'sample.mp4');
   const corrupted = resolve(fixtureRoot, 'corrupted.mp4');
+  const corruptedContainer = resolve(fixtureRoot, 'corrupted-container.mp4');
   const project = resolve(fixtureRoot, 'Untitled.cutcut');
   const portrait = resolve(fixtureRoot, 'portrait.mp4');
   const noAudio = resolve(fixtureRoot, 'no-audio.mp4');
@@ -67,6 +68,7 @@ test('ships the valid, corrupted and portable project fixtures locally', async (
   const missingMediaProject = resolve(fixtureRoot, 'missing-media.cutcut');
   expect(existsSync(sample)).toBe(true);
   expect(existsSync(corrupted)).toBe(true);
+  expect(existsSync(corruptedContainer)).toBe(true);
   expect(existsSync(project)).toBe(true);
   expect(existsSync(portrait)).toBe(true);
   expect(existsSync(noAudio)).toBe(true);
@@ -82,6 +84,13 @@ test('ships the valid, corrupted and portable project fixtures locally', async (
   expect(JSON.parse(readFileSync(project, 'utf8')).media[0].path).toBe('sample.mp4');
   expect(JSON.parse(readFileSync(unicodeProject, 'utf8')).transcript.segments[0].text).toContain('Xin chào');
   expect(JSON.parse(readFileSync(missingMediaProject, 'utf8')).media[0].path).toBe('does-not-exist.mp4');
+});
+
+test('runs the deterministic local lifecycle and output contract validator', async () => {
+  const validator = resolve('scripts/validation/task46-e2e.ps1');
+  const shell = process.platform === 'win32' ? 'pwsh.exe' : 'pwsh';
+  const output = execFileSync(shell, ['-NoProfile', '-File', validator], { encoding: 'utf8' });
+  expect(output).toContain('Task46 fixture/output validation PASS');
 });
 
 test('settings can switch and persist EN/VI locale independently of project data', async ({ page }) => {
